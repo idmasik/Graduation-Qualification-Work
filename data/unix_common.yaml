@@ -1,0 +1,170 @@
+# Artifacts common to Unix-based operating systems.
+---
+name: CupsJobCacheFile
+aliases: [MacOSCupsJobCacheFile]
+doc: Common UNIX Printing System (CUPS) job cache file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/var/spool/cups/cache/job.cache'
+    supported_os: [Darwin]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/var/spool/cups/cache/job.cache'
+    supported_os: [Darwin]
+  - type: FILE
+    attributes:
+      paths:
+        - '/var/cache/cups/job.cache'
+    supported_os: [Linux]
+supported_os: [Darwin, Linux]
+urls:
+  - 'https://www.cups.org/doc/man-cups-files.conf.html'
+  - 'https://www.cups.org/doc/spec-design.html'
+---
+name: UnixGroupsFile
+aliases: [UnixGroups]
+doc: Unix groups file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/group'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/group'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixHostsFile
+aliases: [MacOSHostsFile]
+doc: Unix hosts file
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/hosts'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/hosts'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixLocalTimeConfigurationFile
+aliases: [MacOSLocalTime]
+doc: Unix local time zone configuration file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/localtime'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/localtime'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixPasswdFile
+aliases: [UnixPasswd]
+doc: Unix passwd file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/passwd'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/passwd'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixShadowFile
+doc: Unix shadow file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/shadow'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/shadow'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixShadowBackupFile
+doc: Unix shadow backup file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/shadow-'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/shadow-'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+urls:
+  - 'https://man7.org/linux/man-pages/man5/shadow.5.html'
+---
+name: UnixSudoersConfigurationFile
+aliases: [UnixSudoersConfiguration]
+doc: Unix sudoers configuration file.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/etc/sudoers'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/etc/sudoers'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+---
+name: UnixUsersGroups
+doc: Unix users and groups files.
+sources:
+  - type: ARTIFACT_GROUP
+    attributes:
+      names:
+        - 'UnixGroupsFile'
+        - 'UnixPasswdFile'
+        - 'UnixShadowFile'
+supported_os: [Darwin, Linux]
+---
+name: UnixUtmpFile
+aliases: [MacOSUtmpFile]
+doc: Utmp login record files.
+sources:
+  - type: FILE
+    attributes:
+      paths:
+        - '/var/log/btmp'
+        - '/var/log/wtmp'
+        - '/var/run/utmp'
+    supported_os: [Darwin, Linux]
+  - type: FILE
+    attributes:
+      paths:
+        - '/private/var/log/btmp'
+        - '/private/var/log/wtmp'
+        - '/private/var/run/utmp'
+    supported_os: [Darwin]
+supported_os: [Darwin, Linux]
+urls:
+  - 'https://github.com/libyal/dtformats/blob/main/documentation/Utmp%20login%20records%20format.asciidoc'

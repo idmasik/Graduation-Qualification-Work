@@ -1,0 +1,72 @@
+# Deprecated definitions kept for backwards compatibility with GRR
+# for the time being.
+#
+# https://github.com/google/grr/blob/master/grr/config/artifacts.py
+# https://github.com/google/grr/blob/master/grr/parsers/windows_registry_parser.py
+---
+name: AllUsersAppDataEnvironmentVariable
+doc: The %ProgramData% environment variable.
+sources:
+- type: REGISTRY_VALUE
+  attributes: {key_value_pairs: [{key: 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\ProfileList', value: 'ProgramData'}]}
+supported_os: [Windows]
+urls: ['http://environmentvariables.org/ProgramData']
+---
+name: AllUsersProfileEnvironmentVariable
+doc: The %AllUsersProfile% environment variable.
+sources:
+- type: REGISTRY_KEY
+  attributes:
+    keys:
+    - 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\ProfileList\ProfilesDirectory'
+    - 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\ProfileList\AllUsersProfile'
+supported_os: [Windows]
+urls: ['http://support.microsoft.com/kb//214653']
+---
+name: LinuxRelease
+doc: |
+  Linux specific distribution information.
+
+  See: lsb_release(1) man page, or the LSB Specification under the 'Command
+  Behaviour' section.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/etc/enterprise-release'
+    - '/etc/lsb-release'
+    - '/etc/oracle-release'
+    - '/etc/redhat-release'
+    - '/etc/system-release'
+supported_os: [Linux]
+---
+name: SystemDriveEnvironmentVariable
+doc: |
+  The %SystemDrive% environment variable, usually "C:".
+
+  This value isn't actually present in the Registry but with some parsing we
+  can figure it out from SystemRoot.
+sources:
+- type: REGISTRY_VALUE
+  attributes: {key_value_pairs: [{key: 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion', value: 'SystemRoot'}]}
+supported_os: [Windows]
+urls:
+- 'http://environmentvariables.org/SystemDrive'
+- 'https://msdn.microsoft.com/en-us/library/cc231436.aspx'
+---
+name: WinDomainName
+doc: The Windows domain the system is connected to.
+sources:
+- type: REGISTRY_VALUE
+  attributes: {key_value_pairs: [{key: 'HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Tcpip\Parameters', value: 'Domain'}]}
+supported_os: [Windows]
+---
+name: WindowsEnvironmentVariableAllUsersAppData
+doc: The %ProgramData% environment variable.
+sources:
+- type: REGISTRY_VALUE
+  attributes:
+    key_value_pairs:
+    - {key: 'HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\ProfileList', value: 'ProgramData'}
+supported_os: [Windows]
+urls: ['http://environmentvariables.org/ProgramData']

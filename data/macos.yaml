@@ -1,0 +1,1215 @@
+# Mac OS (Darwin) specific artifacts.
+---
+name: MacOSAddressBookImagesSQLiteDatabaseFile
+doc: Address book images SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/Xcode.app/Contents/Developer/Platforms/*.platform/Developer/Library/CoreSimulator/Profiles/Runtimes/*.simruntime/Contents/Resources/SampleContent/Library/AddressBook/AddressBookImages.sqlitedb'
+    - '%%users.homedir%%/Library/Developer/CoreSimulator/Devices/*/data/Library/AddressBook/AddressBookImages.sqlitedb'
+supported_os: [Darwin]
+---
+name: MacOSAirportPreferencesPlistFile
+aliases: [MacOSWirelessNetworks]
+doc: Airport (wireless networking) preferences property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/SystemConfiguration/com.apple.airport.preferences.plist']}
+supported_os: [Darwin]
+urls: ['https://artifacts-kb.readthedocs.io/en/latest/sources/macos/NetworkSettings.html']
+---
+name: MacOSApplePushServiceSQLiteDatabaseFile
+doc: Apple push service SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Application Support/ApplePushService/aps.db']}
+supported_os: [Darwin]
+---
+name: MacOSAppleSetupDoneFile
+aliases: [MacOSSystemInstallationTime]
+doc: Mac OS .AppleSetupDone file that hints to the system installation date and time.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/.AppleSetupDone'
+    - '/var/db/.AppleSetupDone'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-settings-and-informations']
+---
+name: MacOSAppleSystemLogFile
+aliases: [MacOSAppleSystemLogFiles]
+doc: Apple system log (ASL) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/log/asl/*.asl'
+    - '/private/var/log/DiagnosticMessages/*.asl'
+    - '/var/log/asl/*.asl'
+    - '/var/log/DiagnosticMessages/*.asl'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-logs'
+- 'https://support.apple.com/guide/console/reports-cnsl664be99a/mac'
+---
+name: MacOSApplicationBundleCacheSQLiteDatabaseFile
+doc: Application bundle cache SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Caches/*/Cache.db']}
+supported_os: [Darwin]
+---
+name: MacOSApplicationResourcesStringsPlistFile
+doc: Application resources strings plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/*.app/Contents/Resources/*.lproj/*.strings'
+    - '/Applications/*/*.app/Contents/Resources/*.lproj/*.strings'
+supported_os: [Darwin]
+---
+name: MacOSAssetCacheInfoSQLiteDatabaseFile
+doc: Asset cache information SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Caches/com.apple.AssetCache/AssetInfo.db']}
+supported_os: [Darwin]
+---
+name: MacOSAuthorizationRulesSQLiteDatabaseFile
+doc: |
+  Authorization rules SQLite database file.
+
+  Superscedes /etc/authorization seen Mac OS X 10.8 Mountain Lion and earlier versions.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/auth.db'
+    - '/var/db/auth.db'
+supported_os: [Darwin]
+---
+name: MacOSCalendarCacheSQLiteDatabaseFile
+doc: Calendar cache SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Calendars/Calendar Cache']}
+supported_os: [Darwin]
+---
+name: MacOSCallHistoryCacheSQLiteDatabaseFile
+doc: Call history cache SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/CallHistoryDB/CallHistory.storedata']}
+supported_os: [Darwin]
+---
+name: MacOSApplicationsDirectory
+aliases: [MacOSApplications]
+doc: Contents of the Applications directory.
+sources:
+- type: PATH
+  attributes: {paths: ['/Applications/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSApplicationsRecentItems
+doc: Recent Items application specific
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/*.LSSharedFileList.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#recent-items']
+---
+name: MacOSAtJobs
+doc: MacOS at jobs
+sources:
+- type: FILE
+  attributes: {paths: ['/usr/lib/cron/jobs/*']}
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-info-misc'
+- 'https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/at.1.html#//apple_ref/doc/man/1/at'
+---
+name: MacOSAuditLogFile
+aliases: [MacOSAuditLogFiles]
+doc: Audit log files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    # Name of the file consists of "startime.stoptime" where each time is formatted as:
+    # "YYYYMMDDhhmmss". For example: "20141130081343.20141130081943".
+    - '/private/var/audit/[0-9]*.[0-9]*'
+    - '/var/audit/[0-9]*.[0-9]*'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-logs']
+---
+name: MacOSBluetoothPlistFile
+doc: Bluetooth preferences and paired device information property list (plist) file
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/com.apple.Bluetooth.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-preferences']
+---
+name: MacOSCodeSignatureCodeResourcesPlistFile
+doc: Code signature CodeResources plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/Utilities/*.app/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/CoreServices/*.app/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Extensions/*.kext/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/PlugIns/*.plugin/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Resources/*.bundle/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/*.bundle/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Filesystems/*/*.kext/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/Filesystems/*/Encodings/*.kext/Contents/_CodeSignature/CodeResources'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Resources/*.kext/Contents/_CodeSignature/CodeResources'
+supported_os: [Darwin]
+---
+name: MacOSContentsInfoPlistFile
+doc: Contents Info.plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/*/*.app/Contents/Info.plist'
+    - '/Applications/*/*.app/Contents/Resources/*.help/Contents/Info.plist'
+    - '/System/Library/CoreServices/*.app/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/PlugIns/*.plugin/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Resources/*.bundle/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/*.bundle/Contents/Info.plist'
+    - '/System/Library/Extensions/*.kext/PlugIns/*.kext/Info.plist'
+    - '/System/Library/Filesystems/*/*.kext/Contents/Info.plist'
+    - '/System/Library/Filesystems/*/Encodings/*.kext/Contents/Info.plist'
+    - '/System/Library/Frameworks/*.framework/Versions/A/Resources/Info.plist'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Resources/*.kext/Contents/Info.plist'
+supported_os: [Darwin]
+---
+name: MacOSContentsVersionPlistFile
+doc: Contents version.plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/*/*.app/Contents/version.plist'
+    - '/Applications/*/*.app/Contents/Resources/*.help/Contents/version.plist'
+    - '/System/Library/CoreServices/*.app/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/PlugIns/*.plugin/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Resources/*.bundle/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/*.bundle/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/Contents/version.plist'
+    - '/System/Library/Extensions/*.kext/PlugIns/*.kext/version.plist'
+    - '/System/Library/Filesystems/*/*.kext/Contents/version.plist'
+    - '/System/Library/Filesystems/*/Encodings/*.kext/Contents/version.plist'
+    - '/System/Library/Frameworks/*.framework/Versions/A/Resources/version.plist'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Resources/*.kext/Contents/version.plist'
+supported_os: [Darwin]
+---
+name: MacOSCoreAnalyticsFile
+aliases: [MacOSCoreAnalyticsFiles]
+doc: CoreAnalytics log files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/Logs/DiagnosticReports/*.core_analytics'
+    - '/private/var/db/analyticsd/aggregates/*'
+    - '/var/db/analyticsd/aggregates/*'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x#diagnostic-reports'
+- 'https://www.crowdstrike.com/blog/i-know-what-you-did-last-month-a-new-artifact-of-execution-on-macos-10-13/'
+---
+name: MacOSCronTabs
+doc: Cron tabs
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/etc/crontab'
+    - '/private/etc/crontab'
+    - '/usr/lib/cron/tabs/*'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-info-misc']
+---
+name: MacOSDockConfigurationPlistFile
+aliases: [MacOSDock]
+doc: |
+  Dock configuration property list (plist) file.
+
+  This property list contains information about the configuration of a user's Dock.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/com.apple.Dock.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSDirectoryServicesLocalNodesSQLiteDatabaseFile
+doc: Directory services local nodes database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/dslocal/nodes/Default/sqlindex'
+    - '/var/db/dslocal/nodes/Default/sqlindex'
+supported_os: [Darwin]
+---
+name: MacOSDuetActivitySchedulerSQLiteDatabaseFile
+doc: Duet activity scheduler database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/DuetActivityScheduler/DuetActivitySchedulerClassC.db'
+    - '/var/db/DuetActivityScheduler/DuetActivitySchedulerClassC.db'
+supported_os: [Darwin]
+---
+name: MacOSDuetinteractionCSQLiteDatabaseFile
+doc: Duet interactionC database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/CoreDuet/People/interactionC.db'
+    - '/var/db/CoreDuet/People/interactionC.db'
+supported_os: [Darwin]
+---
+name: MacOSDuetKnowledgeCSQLiteDatabaseFile
+aliases: [MacOSDuetKnowledgeBase]
+doc: Duet knowledgeC User and Application usage database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Application Support/Knowledge/knowledgeC.db'
+    - '/private/var/db/CoreDuet/Knowledge/knowledgeC.db'
+    - '/var/db/CoreDuet/Knowledge/knowledgeC.db'
+supported_os: [Darwin]
+urls: ['https://www.mac4n6.com/blog/2018/8/5/knowledge-is-power-using-the-knowledgecdb-database-on-macos-and-ios-to-determine-precise-user-and-application-usage']
+---
+name: MacOSDuetSQLiteDatabaseFile
+doc: Duet database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/CoreDuet/coreduetd.db'
+    - '/var/db/CoreDuet/coreduetd.db'
+supported_os: [Darwin]
+---
+name: MacOSDuetSystemEventsSQLiteDatabaseFile
+doc: Duet system events database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/CoreDuet/coreduetd.db'
+    - '/var/db/CoreDuet/coreduetd.db'
+supported_os: [Darwin]
+---
+name: MacOSFSEventsFile
+aliases: [MacOSFSEvents]
+doc: File system events disk log stream (fsevents) files.
+sources:
+- type: FILE
+  attributes: {paths: ['/.fseventsd/*']}
+supported_os: [Darwin]
+urls: ['https://github.com/libyal/dtformats/blob/main/documentation/MacOS%20File%20System%20Events%20Disk%20Log%20Stream%20format.asciidoc']
+---
+name: MacOSGatekeeperOpaqueConfigurationSQLiteDatabaseFile
+doc: Gatekeeper opaque configuration database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/gkopaque.bundle/Contents/Resources/gkopaque.db'
+    - '/var/db/gkopaque.bundle/Contents/Resources/gkopaque.db'
+supported_os: [Darwin]
+---
+name: MacOSGlobalPreferencesPlistFile
+doc: |
+  Global preferences property list (plist) file.
+
+  This property list contains information about the system's locale and time zone.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/.GlobalPreferences.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-preferences']
+---
+name: MacOSiCloudAccounts
+doc: iCloud Accounts
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/iCloud/Accounts/*']}
+supported_os: [Darwin]
+---
+name: MacOSiCloudPreferences
+doc: iCloud user preferences
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/MobileMeAccounts.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSIdentityServicesSQLiteDatabaseFile
+doc: Identity services SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/IdentityServices/ids.db']}
+supported_os: [Darwin]
+---
+name: MacOSiDevices
+doc: Attached iDevices
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/com.apple.iPod.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSInstallationHistoryPlistFile
+aliases: [MacOSInstallationHistory]
+doc: Software installation history property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Receipts/InstallHistory.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#software-installation']
+---
+name: MacOSInstallationLogFile
+doc: Software installation log file
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/log/install.log'
+    - '/var/log/install.log'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-logs']
+---
+name: MacOSiTunesInterfaceBuilderDocumentPlistFile
+doc: iTunes Interface Builder document (*.itxib) plist file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Applications/iTunes.app/Contents/Resources/*.lproj/*.itxib']}
+supported_os: [Darwin]
+---
+name: MacOSiOSBackupInfo
+doc: iOS device backup information
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/MobileSync/Backup/*/info.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#idevice-backup']
+---
+name: MacOSiOSBackupManifest
+doc: iOS device backup apps information
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/MobileSync/Backup/*/Manifest.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#idevice-backup']
+---
+name: MacOSiOSBackupMbdb
+doc: iOS device backup files information
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/MobileSync/Backup/*/Manifest.mdbd']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#idevice-backup']
+---
+name: MacOSiOSBackupsMainDirectory
+doc: iOS device backups directory
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/MobileSync/Backup/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#idevice-backup']
+---
+name: MacOSiOSBackupStatus
+doc: iOS device backup status information.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/MobileSync/Backup/*/Status.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#idevice-backup']
+---
+name: MacOSKernelExtensionFile
+aliases: [MacOSKextFiles]
+doc: Kernel extension (.kext) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/Extensions/*'
+    - '/System/Library/Extensions/*'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#kernel-extension']
+---
+name: MacOSKeyboardLayoutPlistFile
+doc: Keyboard layout property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/com.apple.HIToolbox.plist']}
+supported_os: [Darwin]
+---
+name: MacOSLastlogFile
+doc: Lastlog file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/log/lastlog'
+    - '/var/log/lastlog'
+supported_os: [Darwin]
+---
+name: MacOSLaunchAgentsPlistFile
+aliases: [MacOSLaunchAgentsPlistFiles]
+doc: Launch Agents property list (plist) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/LaunchAgents/*.plist'
+    - '/System/Library/LaunchAgents/*.plist'
+    - '%%users.homedir%%/Library/LaunchAgents/*.plist'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#autorun-locations']
+---
+name: MacOSLaunchDaemonsPlistFile
+aliases: [MacOSLaunchDaemonsPlistFiles]
+doc: Launch Daemons property list (plist) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/LaunchDaemons/*.plist'
+    - '/System/Library/LaunchDaemons/*.plist'
+    - '%%users.homedir%%/Library/LaunchDaemons/*.plist'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#autorun-locations']
+---
+name: MacOSLoadedKexts
+doc: MacOS Loaded Kernel Extensions.
+sources:
+- type: COMMAND
+  attributes:
+    args: []
+    cmd: /usr/sbin/kextstat
+supported_os: [Darwin]
+---
+name: MacOSLogFile
+aliases: [MacOSMiscLogs]
+doc: Miscellaneous system log files.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Logs/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#logs']
+---
+name: MacOSLoginWindowPlistFile
+doc: Log-in window information property list (plist) file
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/Preferences/com.apple.loginwindow.plist'
+    - '%%users.homedir%%/Library/Preferences/loginwindow.plist'
+    - '%%users.homedir%%/Library/Preferences/ByHost/com.apple.loginwindow.plist'
+    - '%%users.homedir%%/Library/Preferences/ByHost/com.apple.loginwindow.*.plist'
+    - '/var/root/Library/Preferences/com.apple.loginwindow.plist'
+    - '/private/var/root/Library/Preferences/com.apple.loginwindow.plist'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-preferences'
+- 'https://taomm.org/PDFs/vol1/CH%200x02%20Persistence.pdf'
+- 'https://developer.apple.com/documentation/devicemanagement/loginwindowscripts'
+---
+name: MacOSMailAccounts
+doc: Mail Accounts. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/MailData/Accounts.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailBackupTOC
+doc: Mail Backup Table of Content. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/MailData/BackupTOC.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailboxes
+doc: Mail Mailbox Directory. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/Mailboxes/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailDownloadAttachments
+doc: Mail Downloads Directory
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Containers/com.apple.mail/Data/Library/Mail Downloads/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailEnvelopIndex
+doc: Mail Envelope Index. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/MailData/Envelope Index']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailIMAP
+doc: Mail IMAP Synched Mailboxes. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/IMAP-*/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailMainDirectory
+doc: Mail Main Folder. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailOpenedAttachments
+doc: Mail Opened Attachments
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/MailData/OpenedAttachmentsV2.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailPOP
+doc: Mail POP Synched Mailboxes. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/POP-*/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailPreferences
+doc: Mail Preferences
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/com.apple.Mail.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailRecentContacts
+doc: Mail Recent Contacts
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/AddressBook/MailRecents-v4.abcdmr']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMailSignatures
+doc: Mail Signatures by Account. Until now only V2, V3 and V5 have been observed.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Mail/V[0-9]/MailData/Signatures/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#mail']
+---
+name: MacOSMessageChatSQLiteDatabaseFile
+doc: iMessage chat SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Messages/chat.db']}
+supported_os: [Darwin]
+---
+name: MacOSMountedDMGs
+doc: MacOS Mounted DMG files.
+sources:
+- type: COMMAND
+  attributes:
+    args: ['info']
+    cmd: /usr/bin/hdiutil
+supported_os: [Darwin]
+---
+name: MacOSNetworkUsageSQLiteDatabaseFile
+doc: Network usage SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/networkd/netusage.sqlite'
+    - '/var/networkd/netusage.sqlite'
+supported_os: [Darwin]
+---
+name: MacOSNotesSQLiteDatabaseFile
+doc: Notes SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Containers/com.apple.Notes/Data/Library/Notes/NotesV*.storedata']}
+supported_os: [Darwin]
+---
+name: MacOSNotificationCenterSQLiteDatabaseFile
+aliases: [MacOSNotificationCenter]
+doc: MacOS NotificationCenter SQLite database files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Application Support/NotificationCenter/*.db'
+    - '/private/var/folders/[a-z][0-9]/*/0/com.apple.notificationcenter/db/db'
+    - '/private/var/folders/[a-z][0-9]/*/0/com.apple.notificationcenter/db2/db'
+    - '/var/folders/[a-z][0-9]/*/0/com.apple.notificationcenter/db/db'
+    - '/var/folders/[a-z][0-9]/*/0/com.apple.notificationcenter/db2/db'
+supported_os: [Darwin]
+---
+name: MacOSPeriodicSystemFunctionConfigurationFile
+aliases: [MacOSPeriodicSystemFunctions]
+doc: Configuration files of system function scripts that should run periodically.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/etc/daily.local/*'
+    - '/etc/defaults/periodic.conf'
+    - '/etc/monthly.local/*'
+    - '/etc/periodic/**2'
+    - '/etc/periodic.conf'
+    - '/etc/periodic.conf.local'
+    - '/etc/periodic/daily/*'
+    - '/etc/periodic/monthly/*'
+    - '/etc/periodic/weekly/*'
+    - '/etc/weekly.local/*'
+    - '/private/etc/daily.local/*'
+    - '/private/etc/defaults/periodic.conf'
+    - '/private/etc/monthly.local/*'
+    - '/private/etc/periodic/**2'
+    - '/private/etc/periodic.conf'
+    - '/private/etc/periodic.conf.local'
+    - '/private/etc/periodic/daily/*'
+    - '/private/etc/periodic/monthly/*'
+    - '/private/etc/periodic/weekly/*'
+    - '/private/etc/weekly.local/*'
+    - '/usr/local/etc/periodic/**2'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-info-misc'
+- 'https://www.freebsd.org/cgi/man.cgi?periodic'
+- 'https://www.freebsd.org/cgi/man.cgi?periodic.conf'
+---
+name: MacOSQuarantineEventsSQLiteDatabaseFile
+aliases: [MacOSQuarantineEvents]
+doc: Quarantine events SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Preferences/com.apple.LaunchServices.QuarantineEvents'
+    - '%%users.homedir%%/Library/Preferences/com.apple.LaunchServices.QuarantineEventsV2'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSRecentItemsPlistFile
+aliases: [MacOSRecentItems]
+doc: Recent items property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/com.apple.recentitems.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#recent-items']
+---
+name: MacOSRemoteDesktopAdministratorSystem
+doc: Apple Remote Desktop (ARD) was first released in 2002 and is Apple’s desktop management system for software distribution, asset management, and remote assistance.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/RemoteManagement/ClientCaches/*'
+    - '/private/var/db/RemoteManagement/RMDB/rmdb.sqlite3'
+    - '/var/db/RemoteManagement/ClientCaches/*'
+    - '/var/db/RemoteManagement/RMDB/rmdb.sqlite3'
+supported_os: [Darwin]
+urls:
+- 'https://help.apple.com/remotedesktop/mac/3.9/'
+- 'https://www.fireeye.com/blog/threat-research/2019/10/leveraging-apple-remote-desktop-for-good-and-evil.html'
+- 'https://github.com/fireeye/ARDvark#ard-artifacts-to-parse'
+---
+name: MacOSRemoteDesktopClientSystem
+doc: Apple Remote Desktop (ARD) was first released in 2002 and is Apple’s desktop management system for software distribution, asset management, and remote assistance.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/RemoteManagement/caches/AppUsage.plist'
+    - '/var/db/RemoteManagement/caches/AppUsage.plist'
+    - '/private/var/db/RemoteManagement/caches/UserAcct.tmp'
+    - '/var/db/RemoteManagement/caches/UserAcct.tmp'
+supported_os: [Darwin]
+urls:
+- 'https://help.apple.com/remotedesktop/mac/3.9/'
+- 'https://www.fireeye.com/blog/threat-research/2019/10/leveraging-apple-remote-desktop-for-good-and-evil.html'
+- 'https://github.com/fireeye/ARDvark#ard-artifacts-to-parse'
+---
+name: MacOSResourcesInfoStringsPlistFile
+doc: Resources InfoPlist.strings plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Applications/*.app/Contents/Resources/*.help/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/Applications/*/*.app/Contents/Resources/*.help/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/CoreServices/*.app/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.bundle/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Resources/*.bundle/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/InfoPlist.strings'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/Filesystems/*/*.kext/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/Filesystems/*/Encodings/*.kext/Contents/Resources/*.lproj/InfoPlist.strings'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Resources/*.kext/Contents/Resources/*.lproj/InfoPlist.strings'
+supported_os: [Darwin]
+---
+name: MacOSResourcesLocalizableStringsPlistFile
+doc: Resources Localizable.strings plist file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/System/Library/CoreServices/*.app/Contents/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/Extensions/*.kext/Contents/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/Extensions/*.kext/Contents/PlugIns/*.kext/Contents/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/Frameworks/*.framework/Versions/A/Frameworks/*.framework/Versions/A/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/PreferencePanes/*.prefPane/Contents/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Plugins/*.bundle/Contents/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/PrivateFrameworks/*.framework/Versions/A/Resources/*.lproj/Localizable.strings'
+    - '/System/Library/SystemProfiler/*/Contents/Resources/*.lproj/Localizable.strings'
+supported_os: [Darwin]
+---
+name: MacOSSidebarListsPlistFile
+aliases: [MacOSSidebarLists]
+doc: |
+  Sidebar lists preferences property list (plist) file.
+
+  This property list contains the names of volumes mounted on the desktop that have appeared in the sidebar list.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Preferences/com.apple.sidebarlists.plist'
+    - '%%users.homedir%%/Preferences/com.apple.sidebarlists.plist'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSSiriAnalyticsSQLiteDatabaseFile
+doc: Siri analytics SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Assistant/SiriAnalytics.db']}
+supported_os: [Darwin]
+---
+name: MacOSSiriSuggestionsEntitiesSQLiteDatabaseFile
+doc: Siri suggestions entities SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Suggestions/entities.db'
+    - '%%users.homedir%%/Library/Suggestions/entities.db-wal'
+supported_os: [Darwin]
+---
+name: MacOSSiriSuggestionsPendingQueueSQLiteDatabaseFile
+doc: Siri suggestions pending queue SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Suggestions/pending/queue.db'
+    - '%%users.homedir%%/Library/Suggestions/pending/queue.db-wal'
+supported_os: [Darwin]
+---
+name: MacOSSiriSuggestionsSnippetsSQLiteDatabaseFile
+doc: Siri suggestions snippets SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Suggestions/snippets.db'
+    - '%%users.homedir%%/Library/Suggestions/snippets.db-wal'
+supported_os: [Darwin]
+---
+name: MacOSSleepimageFile
+doc: Sleepimage file which contains the content of memory before going to sleep
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/vm/sleepimage'
+    - '/var/vm/sleepimage'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#sleep.2fhibernate-and-swap-image-file']
+---
+name: MacOSSoftwareUpdatePreferencesPlistFile
+aliases: [MacOSUpdate]
+doc: Software update preferences property list (plist) files.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/com.apple.SoftwareUpdate.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#software-installation']
+---
+name: MacOSSpotlightStoreVolumeConfigurationPlistFile
+doc: Spotlight store volume configuration plist file.
+sources:
+- type: FILE
+  attributes: {paths: ['/.Spotlight-V100/Store-V1/VolumeConfig.plist']}
+supported_os: [Darwin]
+---
+name: MacOSSpotlightVolumeConfigurationPlistFile
+doc: Spotlight volume configuration plist file.
+sources:
+- type: FILE
+  attributes: {paths: ['/.Spotlight-V100/VolumeConfiguration.plist']}
+supported_os: [Darwin]
+---
+name: MacOSStartupItemsPlistFile
+aliases: [MacOSStartupItemsPlistFiles]
+doc: Startup Items property list (plist) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/StartupItems/**/*.plist'
+    - '/System/Library/StartupItems/**/*.plist'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#autorun-locations'
+- 'https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/StartupItems.html'
+---
+name: MacOSSwapFile
+aliases: [MacOSSwapFiles]
+doc: Swap file
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/vm/swapfile[0-9]'
+    - '/var/vm/swapfile[0-9]'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#sleep.2fhibernate-and-swap-image-file']
+---
+name: MacOSSystemConfigurationPreferencesPlistFile
+doc: System configuration preferences property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/SystemConfiguration/preferences.plist']}
+supported_os: [Darwin]
+---
+name: MacOSSystemLogFile
+aliases: [MacOSSystemLogFiles]
+doc: System log file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/log/*'
+    - '/var/log/*'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-logs']
+---
+name: MacOSSystemPolicySQLiteDatabaseFile
+doc: System policy database.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/SystemPolicy'
+    - '/var/db/SystemPolicy'
+supported_os: [Darwin]
+---
+name: MacOSSystemPreferencesPlistFile
+aliases: [MacOSSystemPreferencesPlistFiles]
+doc: System Preferences property list (plist) files
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/**/*.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-preferences']
+---
+name: MacOSSystemVersionPlistFile
+doc: Operating system name and version property list (plist) file
+sources:
+- type: FILE
+  attributes: {paths: ['/System/Library/CoreServices/SystemVersion.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-settings-and-informations']
+---
+name: MacOSTCCSQLiteDatabaseFile
+aliases: [MacOSTCC]
+doc: Transparency, Consent, Control (TCC) framework SQLite database files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/Library/Application Support/com.apple.TCC/TCC.db'
+    - '%%users.homedir%%/Library/Application Support/com.apple.TCC/TCC.db'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/tcc_database']
+---
+name: MacOSTextReplacementsSQLiteDatabaseFile
+doc: Text replacements SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/KeyboardServices/TextReplacements.db']}
+supported_os: [Darwin]
+---
+name: MacOSTimeMachinePlistFile
+doc: Time Machine information property list (plist) file
+sources:
+- type: FILE
+  attributes: {paths: ['/Library/Preferences/com.apple.TimeMachine.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-preferences']
+---
+name: MacOSUnifiedLogging
+doc: Apple Unified Logging and Activity Tracing
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/diagnostics/*.tracev3'
+    - '/private/var/db/diagnostics/*/*.tracev3'
+    - '/private/var/db/uuidtext/*/*'
+    - '/var/db/diagnostics/*.tracev3'
+    - '/var/db/diagnostics/*/*.tracev3'
+    - '/var/db/uuidtext/*/*'
+supported_os: [Darwin]
+urls: ['https://github.com/mac4n6/Presentations/blob/master/Logs%20Unite!%20-%20Forensic%20Analysis%20of%20Apple%20Unified%20Logs/LogsUnite.pdf']
+---
+name: MacOSUserApplicationLogFile
+aliases: [MacOSUserApplicationLogs]
+doc: User applications log files.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Logs/*.log']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#logs']
+---
+name: MacOSUserApplicationSupportDirectory
+aliases: [MacOSApplicationSupport]
+doc: Contents of the user Application Support directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#misc']
+---
+name: MacOSUserDesktopDirectory
+doc: Contents of the user Desktop directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Desktop/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserDockDesktopPictureSQLiteDatabaseFile
+doc: Dock user desktop picture SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Application Support/Dock/desktoppicture.db']}
+supported_os: [Darwin]
+---
+name: MacOSUserDocumentsDirectory
+doc: Contents of the user Documents directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Documents/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserGlobalPreferencesPlistFile
+aliases: [MacOSUserGlobalPreferences]
+doc: User global preferences property list (plist) file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/.GlobalPreferences.plist']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSUserKeychainFile
+aliases: [MacOSKeychains]
+doc: User keychain files.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Keychains/*.keychain']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#misc']
+---
+name: MacOSUserKeychainOCSPCacheSQLiteDatabaseFile
+doc: User keychain CRL and OCSP cache SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Keychains/*/ocspcache.sqlite3']}
+supported_os: [Darwin]
+---
+name: MacOSUserLibraryDirectory
+doc: Contents of the user Library directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Library/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserLocalItemsKeychainKeybagSQLiteDatabaseFile
+doc: User (iCloud) local items keychain keybag SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Keychains/*/user.db']}
+supported_os: [Darwin]
+---
+name: MacOSUserLocalItemsKeychainRecordsSQLiteDatabaseFile
+doc: User (iCloud) local items keychain encrypted records SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Keychains/*/keychain-2.db']}
+supported_os: [Darwin]
+---
+name: MacOSUserLoginItemsPlistFile
+aliases: [MacOSUserLoginItems]
+doc: User login items property list (plist) file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Preferences/com.apple.loginitems.plist'
+    - '%%users.homedir%%/Library/Application Support/com.apple.backgroundtaskmanagementagent/backgrounditems.btm'
+    - '/private/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm'
+    - '/var/db/com.apple.backgroundtaskmanagement/BackgroundItems-v*.btm'
+supported_os: [Darwin]
+urls:
+- 'https://forensics.wiki/mac_os_x_10.9_artifacts_location#autorun-locations-2'
+- 'https://objective-see.org/blog/blog_0x31.html'
+---
+name: MacOSUserMoviesDirectory
+doc: Contents of the user Movies directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Movies/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserMusicDirectory
+doc: Contents of the user Music directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Music/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserPasswordHashesPlistFile
+aliases: [MacOSUserPasswordHashesPlistFiles]
+doc: User password hashes property list (plist) files.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/dslocal/nodes/Default/users/*.plist'
+    - '/var/db/dslocal/nodes/Default/users/*.plist'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#system-settings-and-informations']
+---
+name: MacOSUserPicturesDirectory
+doc: Contents of the user Pictures directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Pictures/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserPreferencesDirectory
+aliases: [MacOSUserPreferences]
+doc: Contents of the user Preferences directories.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Preferences/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#preferences']
+---
+name: MacOSUserPublicDirectory
+doc: Contents of the user Public directories.
+sources:
+- type: PATH
+  attributes: {paths: ['%%users.homedir%%/Public/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user-directories']
+---
+name: MacOSUserAccountsSQLiteDatabaseFile
+aliases: [MacOSUserSocialAccounts]
+doc: |
+  User Accounts SQLite database files.
+
+  Seen Accounts3.sqlite and Accounts4.sqlite
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '%%users.homedir%%/Library/Accounts/Accounts*.sqlite'
+    - '%%users.homedir%%/Library/Accounts/Accounts*.sqlite-wal'
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#user.27s-accounts']
+---
+name: MacOSUserTrashDirectory
+aliases: [MacOSUserTrash]
+doc: Contents of the user Trash directories.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/.Trash/*']}
+supported_os: [Darwin]
+urls: ['https://forensics.wiki/mac_os_x_10.9_artifacts_location#misc']
+---
+name: MacOSUtmpxFile
+doc: Utmpx login record file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/run/utmpx'
+    - '/var/run/utmpx'
+supported_os: [Darwin]
+urls: ['https://github.com/libyal/dtformats/blob/main/documentation/Utmp%20login%20records%20format.asciidoc']
+---
+name: MacOSWalletSQLiteDatabaseFile
+doc: Apple Wallet SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Passes/passes23.sqlite']}
+supported_os: [Darwin]
+---
+name: MacOSWirelessDiagnosticDataPersistentSQLiteDatabaseFile
+doc: Apple Wireless Diagnostic Data (AWDD) persistent SQLite database file.
+sources:
+- type: FILE
+  attributes:
+    paths:
+    - '/private/var/db/awdd/persistent.db'
+    - '/var/db/awdd/persistent.db'
+supported_os: [Darwin]
+---
+name: MacOSXcodeiOSDeviceLogsSQLiteDatabaseFile
+doc: Xcode iOS Device Logs SQLite database file.
+sources:
+- type: FILE
+  attributes: {paths: ['%%users.homedir%%/Library/Developer/Xcode/iOS Device Logs/iOS Device Logs *.db']}
+supported_os: [Darwin]
