@@ -798,3 +798,41 @@ func (r *JsonArtifactsReader) ReadFile(filename string) ([]*ArtifactDefinition, 
 	defer f.Close()
 	return r.ReadFileObject(f) // вызов метода ReadFileObject из *YamlArtifactsReader
 }
+
+// Добавляем метод ReadDirectory в YamlArtifactsReader
+func (r *YamlArtifactsReader) ReadDirectory(path string, extension string) ([]*ArtifactDefinition, error) {
+	var definitions []*ArtifactDefinition
+	pattern := filepath.Join(path, "*."+extension)
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		defs, err := r.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, defs...)
+	}
+	return definitions, nil
+}
+
+// Аналогично для JsonArtifactsReader (если требуется)
+func (r *JsonArtifactsReader) ReadDirectory(path string, extension string) ([]*ArtifactDefinition, error) {
+	var definitions []*ArtifactDefinition
+	pattern := filepath.Join(path, "*."+extension)
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		defs, err := r.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, defs...)
+	}
+	return definitions, nil
+}
