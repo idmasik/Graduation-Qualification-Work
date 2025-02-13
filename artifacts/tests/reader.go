@@ -412,9 +412,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -732,35 +734,35 @@ func NewYamlArtifactsReader() *YamlArtifactsReader {
 	}
 }
 
-func (r *YamlArtifactsReader) ReadFileObject(fileObject io.Reader) ([]*ArtifactDefinition, error) {
-	decoder := yaml.NewDecoder(fileObject)
-	var definitionsList []*ArtifactDefinition
-	var lastArtifact *ArtifactDefinition
-	for {
-		var doc map[string]interface{}
-		err := decoder.Decode(&doc)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, FormatError{msg: err.Error()}
-		}
-		if doc == nil {
-			continue
-		}
-		artifactDef, err := r.ReadArtifactDefinitionValues(doc)
-		if err != nil {
-			errorLocation := "At start"
-			if lastArtifact != nil {
-				errorLocation = fmt.Sprintf("After: %s", lastArtifact.Name)
-			}
-			return nil, FormatError{msg: fmt.Sprintf("%s %s", errorLocation, err.Error())}
-		}
-		definitionsList = append(definitionsList, artifactDef)
-		lastArtifact = artifactDef
-	}
-	return definitionsList, nil
-}
+// func (r *YamlArtifactsReader) ReadFileObject(fileObject io.Reader) ([]*ArtifactDefinition, error) {
+// 	decoder := yaml.NewDecoder(fileObject)
+// 	var definitionsList []*ArtifactDefinition
+// 	var lastArtifact *ArtifactDefinition
+// 	for {
+// 		var doc map[string]interface{}
+// 		err := decoder.Decode(&doc)
+// 		if err == io.EOF {
+// 			break
+// 		}
+// 		if err != nil {
+// 			return nil, FormatError{msg: err.Error()}
+// 		}
+// 		if doc == nil {
+// 			continue
+// 		}
+// 		artifactDef, err := r.ReadArtifactDefinitionValues(doc)
+// 		if err != nil {
+// 			errorLocation := "At start"
+// 			if lastArtifact != nil {
+// 				errorLocation = fmt.Sprintf("After: %s", lastArtifact.Name)
+// 			}
+// 			return nil, FormatError{msg: fmt.Sprintf("%s %s", errorLocation, err.Error())}
+// 		}
+// 		definitionsList = append(definitionsList, artifactDef)
+// 		lastArtifact = artifactDef
+// 	}
+// 	return definitionsList, nil
+// }
 
 // func (r *YamlArtifactsReader) ReadFileObject(fileObject io.Reader) ([]*ArtifactDefinition, error) {
 // 	var yamlDefinitions []map[string]interface{}
@@ -780,6 +782,60 @@ func (r *YamlArtifactsReader) ReadFileObject(fileObject io.Reader) ([]*ArtifactD
 // }
 
 // ФУНКЦИЮ ПРИ НЕОБХОДИМОСТИ РАЗМНОЖИТЬ ДЛЯ ВСЕХ ТИПОВ func (r *YamlArtifactsReader)
+
+func (r *YamlArtifactsReader) ReadFileObject(fileObject io.Reader) ([]*ArtifactDefinition, error) {
+	// Читаем всё содержимое файла.
+	data, err := ioutil.ReadAll(fileObject)
+	if err != nil {
+		return nil, err
+	}
+
+	// Пытаемся декодировать содержимое как один документ,
+	// представляющий собой срез артефакт-описаний.
+	var docs []map[string]interface{}
+	if err := yaml.Unmarshal(data, &docs); err == nil && len(docs) > 0 {
+		definitions := make([]*ArtifactDefinition, 0, len(docs))
+		var lastArtifact *ArtifactDefinition
+		for _, docMap := range docs {
+			artifactDef, err := r.ReadArtifactDefinitionValues(docMap)
+			if err != nil {
+				errorLocation := "At start"
+				if lastArtifact != nil {
+					errorLocation = fmt.Sprintf("After: %s", lastArtifact.Name)
+				}
+				return nil, FormatError{msg: fmt.Sprintf("%s %s", errorLocation, err.Error())}
+			}
+			definitions = append(definitions, artifactDef)
+			lastArtifact = artifactDef
+		}
+		return definitions, nil
+	}
+
+	// Если предыдущая попытка не сработала, пробуем обрабатывать как много-документный YAML.
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	var definitions []*ArtifactDefinition
+	for {
+		var doc map[string]interface{}
+		err := decoder.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, FormatError{msg: err.Error()}
+		}
+		// Если документ пустой, переходим к следующему.
+		if doc == nil {
+			continue
+		}
+		artifactDef, err := r.ReadArtifactDefinitionValues(doc)
+		if err != nil {
+			return nil, err
+		}
+		definitions = append(definitions, artifactDef)
+	}
+	return definitions, nil
+}
+
 func (r *YamlArtifactsReader) ReadFile(filename string) ([]*ArtifactDefinition, error) {
 	f, err := os.Open(filename)
 	if err != nil {

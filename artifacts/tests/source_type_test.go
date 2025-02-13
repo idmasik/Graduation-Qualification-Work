@@ -143,12 +143,21 @@ func TestSourceTypeFactory(t *testing.T) {
 
 func TestArtifact(t *testing.T) {
 	factory := NewSourceTypeFactory()
+
+	// Регистрируем тип ARTIFACT_GROUP в фабрике
+	factory.RegisterSourceType(TYPE_INDICATOR_ARTIFACT_GROUP, func(attributes map[string]interface{}) (SourceType, error) {
+		names, ok := attributes["names"].([]string)
+		if !ok {
+			return nil, &FormatError{"invalid or missing 'names' attribute"}
+		}
+		return NewArtifactGroupSourceType(names)
+	})
+
 	source, err := factory.CreateSourceType(TYPE_INDICATOR_ARTIFACT_GROUP, map[string]interface{}{
 		"names": []string{"example_artifact"},
 	})
 	if err != nil {
-		fmt.Println("Error:", err)
-		return
+		t.Fatalf("Failed to create source type: %v", err)
 	}
 
 	fmt.Println("Source Type:", source.AsDict())
@@ -156,8 +165,8 @@ func TestArtifact(t *testing.T) {
 	artifact := NewArtifactDefinition("ExampleArtifact", []string{"ex_art"}, "Пример определения артефакта")
 	attrs := map[string]interface{}{"path": "/var/log/example.log"}
 	if _, err := artifact.AppendSource("FILE", attrs); err != nil {
-		fmt.Println("Ошибка добавления источника:", err)
+		t.Errorf("Ошибка добавления источника: %v", err)
 	}
-	fmt.Printf("Artifact as dict: %#v\n", artifact.AsDict())
 
+	fmt.Printf("Artifact as dict: %#v\n", artifact.AsDict())
 }
