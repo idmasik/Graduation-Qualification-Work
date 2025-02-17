@@ -3,13 +3,12 @@ package main
 
 import (
 	"fmt"
-	"io"
 )
 
 // AbstractCollector задаёт интерфейс для сборщиков артефактов.
 type AbstractCollector interface {
 	// Collect выполняет сбор данных и записывает результат в output.
-	Collect(output io.WriteCloser)
+	Collect(output *Outputs)
 	// RegisterSource пытается зарегистрировать источник для данного определения артефакта.
 	// Если источник поддерживается, возвращается true.
 	RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool
@@ -60,7 +59,7 @@ func (c *Collector) RegisterSource(artifactDefinition *ArtifactDefinition, artif
 }
 
 // Collect выполняет сбор артефактов со всех источников и закрывает output.
-func (c *Collector) Collect(output io.WriteCloser) {
+func (c *Collector) Collect(output *Outputs) {
 	logger.Log(LevelProgress,
 		fmt.Sprintf("Collecting artifacts from %d sources ...", c.sources))
 

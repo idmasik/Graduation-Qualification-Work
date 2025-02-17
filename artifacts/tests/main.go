@@ -48,7 +48,7 @@ func main() {
 	fmt.Printf("Artifact as dict: %#v\n", artifact.AsDict())
 
 	// Пример чтения JSON‑артефактов.
-	jsonFile := "artifacts.json"
+	jsonFile := "C:\\Users\\Dmitr\\Desktop\\Graduation-Qualification-Work\\artifacts\\tests\\test_data\\definitions.json"
 	jReader := NewJsonArtifactsReader()
 	artifacts, err := jReader.ReadFile(jsonFile)
 	if err != nil {
@@ -57,8 +57,8 @@ func main() {
 		fmt.Printf("Прочитано %d артефактов из JSON.\n", len(artifacts))
 	}
 
-	// Пример чтения YAML‑артефактов.
-	yamlFile := "D:\\Projects\\GolangProjects\\Graduation Qualifying Work\\data\\antivirus.yaml"
+	/// Пример чтения YAML‑артефактов.
+	yamlFile := "C:\\Users\\Dmitr\\Desktop\\Graduation-Qualification-Work\\artifacts\\tests\\test_data\\definitions.yaml"
 	yReader := NewYamlArtifactsReader()
 	artifacts, err = yReader.ReadFile(yamlFile)
 	if err != nil {
