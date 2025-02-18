@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -37,21 +36,18 @@ func (c *CommandExecutor) Collect(output *Outputs) {
 		fullCmd := append([]string{cmd.Cmd}, cmd.Args...)
 		fullCmdStr := strings.Join(fullCmd, " ")
 
-		command := exec.Command(cmd.Cmd, cmd.Args...)
-		cmdOutput, err := command.CombinedOutput()
+		cmdOutput, err := exec.Command(cmd.Cmd, cmd.Args...).CombinedOutput()
 		if err != nil {
 			var exitErr *exec.ExitError
 			var execErr *exec.Error
-
-			switch {
-			case errors.As(err, &exitErr):
+			if errors.As(err, &exitErr) {
 				logger.Log(LevelWarning, fmt.Sprintf("Command '%s' for artifact '%s' returned error code '%d'",
 					fullCmdStr, cmd.Artifact, exitErr.ExitCode()))
-			case errors.As(err, &execErr) && execErr.Err == os.ErrNotExist:
+			} else if errors.As(err, &execErr) && execErr.Err == exec.ErrNotFound {
 				logger.Log(LevelWarning, fmt.Sprintf("Command '%s' for artifact '%s' could not be found",
 					cmd.Cmd, cmd.Artifact))
 				cmdOutput = []byte{}
-			default:
+			} else {
 				logger.Log(LevelWarning, fmt.Sprintf("Command '%s' for artifact '%s' failed: %v",
 					fullCmdStr, cmd.Artifact, err))
 				cmdOutput = []byte{}

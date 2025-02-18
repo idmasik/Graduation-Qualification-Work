@@ -26,17 +26,17 @@ func commandArtifact(name, cmd string, args []string) *ArtifactDefinition {
 }
 
 func TestCommandExecution(t *testing.T) {
-	// Setup temporary directory
+	// Создаём временную директорию
 	dir, err := os.MkdirTemp("", "fastir-test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	// Initialize outputs
+	// Инициализируем outputs
 	outputs, err := NewOutputs(dir, "0", false)
 	assert.NoError(t, err)
 	defer outputs.Close()
 
-	// Platform-specific command setup
+	// Платформенно-зависимая настройка команды
 	var cmd string
 	var args []string
 	var expectedOutput string
@@ -51,18 +51,18 @@ func TestCommandExecution(t *testing.T) {
 		expectedOutput = "test\n"
 	}
 
-	// Create collector and artifact
+	// Создаём collector и artifact
 	collector := NewCommandExecutor()
 	artifact := commandArtifact("TestArtifact", cmd, args)
 
-	// Register source
+	// Регистрируем источник
 	registered := collector.RegisterSource(artifact, artifact.Sources[0], nil)
 	assert.True(t, registered)
 
-	// Execute collection
+	// Выполняем сбор данных
 	collector.Collect(outputs)
 
-	// Verify results
+	// Проверяем результаты
 	commands := outputs.GetCommands()["TestArtifact"]
 	assert.NotNil(t, commands)
 
@@ -74,35 +74,35 @@ func TestCommandExecution(t *testing.T) {
 }
 
 func TestUnknownCommand(t *testing.T) {
-	// Setup temporary directory
+	// Создаём временную директорию
 	dir, err := os.MkdirTemp("", "fastir-test")
 	assert.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	// Initialize outputs
+	// Инициализируем outputs
 	outputs, err := NewOutputs(dir, "0", false)
 	assert.NoError(t, err)
 	defer outputs.Close()
 
-	// Capture logger output
+	// Перенаправляем вывод логгера
 	var logBuffer bytes.Buffer
 	oldLogger := logger
 	logger = NewLogger("fastir: ", LevelWarning)
 	logger.SetOutput(&logBuffer)
 	defer func() { logger = oldLogger }()
 
-	// Create collector and artifact
+	// Создаём collector и artifact
 	collector := NewCommandExecutor()
 	artifact := commandArtifact("TestArtifact", "nonexistent-command", []string{})
 
-	// Register source
+	// Регистрируем источник
 	registered := collector.RegisterSource(artifact, artifact.Sources[0], nil)
 	assert.True(t, registered)
 
-	// Execute collection
+	// Выполняем сбор данных
 	collector.Collect(outputs)
 
-	// Verify command results
+	// Проверяем результаты выполнения команды
 	commands := outputs.GetCommands()["TestArtifact"]
 	assert.NotNil(t, commands)
 
@@ -110,7 +110,7 @@ func TestUnknownCommand(t *testing.T) {
 	result := commands[fullCmd]
 	assert.Empty(t, result, "Command output should be empty")
 
-	// Verify logs
+	// Проверяем логи
 	logOutput := logBuffer.String()
 	assert.Contains(t, logOutput, "WARNING", "Log should contain warning")
 	assert.Contains(t, logOutput,
