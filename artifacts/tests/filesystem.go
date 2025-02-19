@@ -11,6 +11,17 @@ import (
 	"strings"
 )
 
+// FileSystem interface
+type FileSystem interface {
+	IsDirectory(p *PathObject) bool
+	IsFile(p *PathObject) bool
+	IsSymlink(p *PathObject) bool
+	ListDirectory(p *PathObject) []*PathObject
+	GetPath(parent *PathObject, path string) *PathObject
+	ReadChunks(p *PathObject) ([]byte, error)
+	GetSize(p *PathObject) int64
+}
+
 // Константы и глобальные переменные
 const CHUNK_SIZE = 5 * 1024 * 1024
 const FILE_INFO_TYPE = "FILE_INFO"
