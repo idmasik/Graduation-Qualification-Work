@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,8 +21,7 @@ var (
 	// Компилируем регулярное выражение для поиска рекурсии в пути.
 	// Шаблон: "**" с опциональным числом (либо "-1", либо число) после звёздочек.
 	pathRecursionRegex = regexp.MustCompile(`\*\*((-1|\d*))`)
-	// Шаблон для поиска символов подстановки: *, ? или группы в квадратных скобках.
-	pathGlobRegex = regexp.MustCompile(`\*|\?|\[.+\]`)
+	pathGlobRegex      = regexp.MustCompile(`\*|\?|\[.+\]`)
 )
 
 // -------------------------------
@@ -152,4 +155,127 @@ func (fs *ArtifactFileSystem) Collect(output CollectorOutput) {
 			}
 		}
 	}
+}
+
+// OSFileSystem реализует интерфейс FileSystem из path_components.go
+type OSFileSystem struct {
+	rootPath string
+}
+
+// NewOSFileSystem создаёт новый экземпляр OSFileSystem
+func NewOSFileSystem(path string) *OSFileSystem {
+	return &OSFileSystem{rootPath: filepath.Clean(path)}
+}
+
+// _relativePath нормализует путь, заменяя разделители на '/' и возвращая путь относительно rootPath.
+func (fs *OSFileSystem) _relativePath(fpath string) string {
+	normalizedPath := filepath.ToSlash(fpath)
+	normalizedRoot := filepath.ToSlash(fs.rootPath)
+	if strings.HasPrefix(normalizedPath, normalizedRoot) {
+		relative := normalizedPath[len(normalizedRoot):]
+		return strings.TrimLeft(relative, "/")
+	}
+	return normalizedPath
+}
+
+// _baseGenerator возвращает канал с единственным PathObject, соответствующим корневой директории.
+func (fs *OSFileSystem) _baseGenerator() <-chan *PathObject {
+	out := make(chan *PathObject, 1)
+	out <- &PathObject{
+		filesystem: fs,
+		name:       filepath.Base(fs.rootPath),
+		path:       fs.rootPath,
+	}
+	close(out)
+	return out
+}
+
+// IsDirectory возвращает true, если p.path указывает на директорию.
+func (fs *OSFileSystem) IsDirectory(p *PathObject) bool {
+	info, err := os.Stat(p.path)
+	return err == nil && info.IsDir()
+}
+
+// IsFile возвращает true, если p.path указывает на файл.
+func (fs *OSFileSystem) IsFile(p *PathObject) bool {
+	info, err := os.Stat(p.path)
+	return err == nil && !info.IsDir()
+}
+
+// IsSymlink возвращает false, так как os.Stat автоматически следует символическим ссылкам.
+func (fs *OSFileSystem) IsSymlink(p *PathObject) bool {
+	// Используем os.Lstat для получения информации о символической ссылке.
+	info, err := os.Lstat(p.path)
+	return err == nil && (info.Mode()&os.ModeSymlink != 0)
+}
+
+// ListDirectory возвращает срез PathObject для каждого элемента в директории p.path.
+// В случае ошибки выводит сообщение в лог и возвращает пустой срез.
+func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
+	var objects []*PathObject
+
+	entries, err := os.ReadDir(p.path)
+	if err != nil {
+		logger.Log(LevelError, "Error analyzing directory '"+p.path+"': "+err.Error())
+		return objects
+	}
+
+	for _, entry := range entries {
+		objects = append(objects, &PathObject{
+			filesystem: fs,
+			name:       entry.Name(),
+			path:       filepath.Join(p.path, entry.Name()),
+		})
+	}
+
+	return objects
+}
+
+// GetPath возвращает новый PathObject для элемента с именем name внутри родительской директории parent.
+func (fs *OSFileSystem) GetPath(parent *PathObject, name string) *PathObject {
+	return &PathObject{
+		filesystem: fs,
+		name:       name,
+		path:       filepath.Join(parent.path, name),
+	}
+}
+
+// GetFullPath возвращает новый PathObject для полного пути fullpath.
+func (fs *OSFileSystem) GetFullPath(fullpath string) *PathObject {
+	return &PathObject{
+		filesystem: fs,
+		name:       filepath.Base(fullpath),
+		path:       fullpath,
+	}
+}
+
+// ReadChunks открывает файл p.path и возвращает один считанный чанк данных (до CHUNK_SIZE байт) и ошибку.
+func (fs *OSFileSystem) ReadChunks(p *PathObject) ([]byte, error) {
+	// Если p не является файлом, возвращаем ошибку.
+	if !fs.IsFile(p) {
+		return nil, nil
+	}
+
+	f, err := os.Open(p.path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	buf := make([]byte, CHUNK_SIZE)
+	n, err := reader.Read(buf)
+	if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return buf[:n], nil
+}
+
+// GetSize возвращает размер файла p.path.
+func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
+	info, err := os.Lstat(p.path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }

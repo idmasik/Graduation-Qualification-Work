@@ -8,13 +8,18 @@ require (
 )
 
 require (
+	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/secDre4mer/pkcs7 v0.0.0-20240322103146-665324a4461d // indirect
 )
 
 require (
 	github.com/Velocidex/go-pe v0.1.0
 	github.com/h2non/filetype v1.1.3
+	github.com/josephspurrier/goversioninfo v1.4.1
+	github.com/saferwall/pe v1.5.6
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/net v0.32.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect

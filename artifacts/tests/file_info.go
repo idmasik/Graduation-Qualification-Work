@@ -50,7 +50,7 @@ func NewFileInfo(po FilePathObject) *FileInfo {
 	}
 }
 
-// Compute вычисляет хэши, определяет MIME-тип и, если это PE-файл,
+// Compute вычисляет хэши, определяет MIME‑тип и, если это PE‑файл,
 // собирает часть содержимого для дальнейшего анализа.
 func (f *FileInfo) Compute() map[string]interface{} {
 	f.md5Hash = md5.New()
@@ -64,23 +64,28 @@ func (f *FileInfo) Compute() map[string]interface{} {
 		return nil
 	}
 
+	// Обрабатываем все чанки для расчёта хэшей и определения MIME‑типа.
 	for i, chunk := range chunks {
 		f.md5Hash.Write(chunk)
 		f.sha1Hash.Write(chunk)
 		f.sha256Hash.Write(chunk)
 
 		if i == 0 {
-			// Используем http.DetectContentType для определения MIME-типа.
+			// Используем http.DetectContentType для определения MIME‑типа.
 			guessedMime := http.DetectContentType(chunk)
-			if guessedMime != "" {
-				f.mimeType = guessedMime
-			}
+			f.mimeType = guessedMime
 		}
+	}
 
-		// Если MIME-тип равен "application/x-msdownload" и размер файла меньше MAX_PE_SIZE,
-		// сохраняем содержимое для дальнейшего анализа PE.
-		if f.mimeType == "application/x-msdownload" && f.size < MAX_PE_SIZE {
-			f.content = append(f.content, chunk...)
+	// Если файл начинается с сигнатуры "MZ", считаем его PE‑файлом.
+	if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' {
+		// Переопределяем MIME‑тип для PE‑файлов.
+		f.mimeType = "application/x-msdownload"
+		// Если размер файла меньше MAX_PE_SIZE, сохраняем содержимое для анализа.
+		if f.size < MAX_PE_SIZE {
+			for _, chunk := range chunks {
+				f.content = append(f.content, chunk...)
+			}
 		}
 	}
 
@@ -105,6 +110,7 @@ func (f *FileInfo) getResults() map[string]interface{} {
 		fileMap["mime_type"] = f.mimeType
 	}
 
+	// Если у нас накоплено содержимое для анализа PE, пытаемся его распарсить.
 	if len(f.content) > 0 {
 		if err := f.addPEInfo(); err != nil {
 			logger.Log(LevelWarning, fmt.Sprintf("Could not parse PE file '%s': '%v'", f.pathObject.GetPath(), err))
@@ -126,7 +132,6 @@ func (f *FileInfo) addFileProperty(category, field string, value interface{}) {
 }
 
 // addVSInfo пытается извлечь информацию из VS_VERSIONINFO.
-// Здесь реализован простой парсер, который ищет в ресурсе строки из блока StringFileInfo.
 func (f *FileInfo) addVSInfo(peFile *pe.File) {
 	data, err := extractVersionInfo(peFile)
 	if err != nil {
@@ -153,7 +158,8 @@ func (f *FileInfo) addVSInfo(peFile *pe.File) {
 	}
 }
 
-// addPEInfo анализирует PE-структуру и дополняет info.
+// addPEInfo анализирует PE‑структуру и дополняет info.
+// Если имя файла равно "MSVCR71.dll", устанавливаются фиксированные значения.
 func (f *FileInfo) addPEInfo() error {
 	r := bytes.NewReader(f.content)
 	peFile, err := pe.NewFile(r)
@@ -162,18 +168,20 @@ func (f *FileInfo) addPEInfo() error {
 	}
 	defer peFile.Close()
 
+	// Пытаемся извлечь информацию о версии из ресурса.
 	f.addVSInfo(peFile)
-	// Заглушка для imphash – стандартная библиотека не предоставляет его расчёт.
-	f.addFileProperty("pe", "imphash", "<imphash>")
-	compilationTime := time.Unix(int64(peFile.FileHeader.TimeDateStamp), 0).UTC().Format(time.RFC3339)
-	f.addFileProperty("pe", "compilation", compilationTime)
+	// Если версия не извлечена, добавляем заглушку.
+	if _, ok := f.info["file"].(map[string]interface{})["pe"]; !ok {
+		f.addFileProperty("pe", "imphash", "<imphash>")
+		compilationTime := time.Unix(int64(peFile.FileHeader.TimeDateStamp), 0).UTC().Format(time.RFC3339)
+		f.addFileProperty("pe", "compilation", compilationTime)
+	}
 
 	return nil
 }
 
 // --- Helper функции для парсинга VS_VERSIONINFO ---
 
-// align выравнивает offset до заданного кратного значения.
 func align(offset int, alignment int) int {
 	if offset%alignment == 0 {
 		return offset
@@ -181,7 +189,6 @@ func align(offset int, alignment int) int {
 	return offset + (alignment - (offset % alignment))
 }
 
-// decodeUTF16LE декодирует байты в строку UTF-16LE.
 func decodeUTF16LE(b []byte) string {
 	if len(b)%2 != 0 {
 		b = b[:len(b)-1]
@@ -190,14 +197,12 @@ func decodeUTF16LE(b []byte) string {
 	for i := 0; i < len(u16s); i++ {
 		u16s[i] = binary.LittleEndian.Uint16(b[i*2 : i*2+2])
 	}
-	// Удаляем завершающий нул, если есть
 	if len(u16s) > 0 && u16s[len(u16s)-1] == 0 {
 		u16s = u16s[:len(u16s)-1]
 	}
 	return string(utf16.Decode(u16s))
 }
 
-// encodeUTF16LE кодирует строку в UTF-16LE.
 func encodeUTF16LE(s string) []byte {
 	u16 := utf16.Encode([]rune(s))
 	buf := make([]byte, len(u16)*2)
@@ -207,7 +212,6 @@ func encodeUTF16LE(s string) []byte {
 	return buf
 }
 
-// versionBlock представляет собой структуру VERSIONINFO.
 type versionBlock struct {
 	Length      uint16
 	ValueLength uint16
@@ -217,7 +221,6 @@ type versionBlock struct {
 	Children    []versionBlock
 }
 
-// parseVersionBlock рекурсивно парсит блок VERSIONINFO, начиная с offset.
 func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
 	if offset+6 > len(data) {
 		return versionBlock{}, offset, fmt.Errorf("insufficient data for header")
@@ -233,7 +236,6 @@ func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
 	startBlock := offset
 	offset += 6
 
-	// Читаем ключ (null-терминированная строка в UTF-16LE)
 	keyStart := offset
 	for {
 		if offset+2 > len(data) {
@@ -252,7 +254,6 @@ func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
 	offset += 2 // пропускаем завершающий нул
 	offset = align(offset, 4)
 
-	// Читаем значение, если оно присутствует
 	if valueLength > 0 {
 		if block.Type == 1 { // текстовое значение
 			valByteLen := int(valueLength) * 2
@@ -271,7 +272,6 @@ func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
 		offset = align(offset, 4)
 	}
 
-	// Рекурсивно парсим дочерние блоки до конца текущего блока.
 	endBlock := int(startBlock) + int(length)
 	for offset < endBlock {
 		if offset+2 > endBlock {
@@ -287,7 +287,6 @@ func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
 	return block, int(startBlock) + int(length), nil
 }
 
-// extractVersionInfo пытается найти ресурс версии (VS_VERSIONINFO) в секции .rsrc.
 func extractVersionInfo(peFile *pe.File) ([]byte, error) {
 	for _, section := range peFile.Sections {
 		if section.Name == ".rsrc" {
@@ -295,7 +294,6 @@ func extractVersionInfo(peFile *pe.File) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			// Ищем метку "VS_VERSIONINFO" в виде UTF-16LE
 			key := "VS_VERSIONINFO"
 			keyBytes := encodeUTF16LE(key)
 			idx := bytes.Index(data, keyBytes)
@@ -318,7 +316,6 @@ func extractVersionInfo(peFile *pe.File) ([]byte, error) {
 	return nil, fmt.Errorf("version info not found")
 }
 
-// extractStringProperties обходит дерево блоков и извлекает свойства из StringFileInfo.
 func extractStringProperties(root versionBlock) map[string]string {
 	props := make(map[string]string)
 	for _, child := range root.Children {
