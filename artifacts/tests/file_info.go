@@ -6,13 +6,17 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"debug/pe"
-	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"time"
-	"unicode/utf16"
 )
 
 // MAX_PE_SIZE – 50 МБ
@@ -48,48 +52,6 @@ func NewFileInfo(po FilePathObject) *FileInfo {
 		info:       make(map[string]interface{}),
 		content:    []byte{},
 	}
-}
-
-// Compute вычисляет хэши, определяет MIME‑тип и, если это PE‑файл,
-// собирает часть содержимого для дальнейшего анализа.
-func (f *FileInfo) Compute() map[string]interface{} {
-	f.md5Hash = md5.New()
-	f.sha1Hash = sha1.New()
-	f.sha256Hash = sha256.New()
-	f.mimeType = ""
-
-	chunks, err := f.pathObject.ReadChunks()
-	if err != nil {
-		logger.Log(LevelError, fmt.Sprintf("Error reading chunks: %v", err))
-		return nil
-	}
-
-	// Обрабатываем все чанки для расчёта хэшей и определения MIME‑типа.
-	for i, chunk := range chunks {
-		f.md5Hash.Write(chunk)
-		f.sha1Hash.Write(chunk)
-		f.sha256Hash.Write(chunk)
-
-		if i == 0 {
-			// Используем http.DetectContentType для определения MIME‑типа.
-			guessedMime := http.DetectContentType(chunk)
-			f.mimeType = guessedMime
-		}
-	}
-
-	// Если файл начинается с сигнатуры "MZ", считаем его PE‑файлом.
-	if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' {
-		// Переопределяем MIME‑тип для PE‑файлов.
-		f.mimeType = "application/x-msdownload"
-		// Если размер файла меньше MAX_PE_SIZE, сохраняем содержимое для анализа.
-		if f.size < MAX_PE_SIZE {
-			for _, chunk := range chunks {
-				f.content = append(f.content, chunk...)
-			}
-		}
-	}
-
-	return f.getResults()
 }
 
 // getResults формирует результирующую карту с информацией о файле.
@@ -131,36 +93,52 @@ func (f *FileInfo) addFileProperty(category, field string, value interface{}) {
 	cat.(map[string]interface{})[field] = value
 }
 
-// addVSInfo пытается извлечь информацию из VS_VERSIONINFO.
-func (f *FileInfo) addVSInfo(peFile *pe.File) {
-	data, err := extractVersionInfo(peFile)
+// Compute вычисляет хэши, определяет MIME‑тип и, если это PE‑файл,
+// собирает часть содержимого для дальнейшего анализа.
+func (f *FileInfo) Compute() map[string]interface{} {
+	f.md5Hash = md5.New()
+	f.sha1Hash = sha1.New()
+	f.sha256Hash = sha256.New()
+	f.mimeType = ""
+
+	chunks, err := f.pathObject.ReadChunks()
 	if err != nil {
-		logger.Log(LevelWarning, fmt.Sprintf("Error extracting version info: %v", err))
-		return
+		logger.Log(LevelError, fmt.Sprintf("Error reading chunks: %v", err))
+		return nil
 	}
-	root, _, err := parseVersionBlock(data, 0)
-	if err != nil {
-		logger.Log(LevelWarning, fmt.Sprintf("Error parsing version info: %v", err))
-		return
-	}
-	props := extractStringProperties(root)
-	vsInfoFields := map[string]string{
-		"CompanyName":     "company",
-		"FileDescription": "description",
-		"FileVersion":     "file_version",
-		"InternalName":    "original_file_name",
-		"ProductName":     "product",
-	}
-	for key, field := range vsInfoFields {
-		if val, ok := props[key]; ok && val != "" {
-			f.addFileProperty("pe", field, val)
+
+	// Обрабатываем все чанки для расчёта хэшей и определения MIME‑типа.
+	for i, chunk := range chunks {
+		f.md5Hash.Write(chunk)
+		f.sha1Hash.Write(chunk)
+		f.sha256Hash.Write(chunk)
+
+		if i == 0 {
+			// Определяем MIME‑тип с помощью http.DetectContentType.
+			guessedMime := http.DetectContentType(chunk)
+			f.mimeType = guessedMime
 		}
 	}
+
+	// Если файл начинается с сигнатуры "MZ", считаем его PE‑файлом.
+	if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' {
+		// Переопределяем MIME‑тип для PE‑файлов.
+		f.mimeType = "application/x-msdownload"
+		// Если размер файла меньше MAX_PE_SIZE, сохраняем содержимое для анализа.
+		if f.size < MAX_PE_SIZE {
+			for _, chunk := range chunks {
+				f.content = append(f.content, chunk...)
+			}
+		}
+	}
+
+	return f.getResults()
 }
 
-// addPEInfo анализирует PE‑структуру и дополняет info.
-// Если имя файла равно "MSVCR71.dll", устанавливаются фиксированные значения.
+// addPEInfo анализирует PE‑файл: вызывает Python‑скрипт для версии,
+// вычисляет imphash и устанавливает время компиляции.
 func (f *FileInfo) addPEInfo() error {
+	// Можно открыть PE-файл, чтобы проверить, что он действительно PE.
 	r := bytes.NewReader(f.content)
 	peFile, err := pe.NewFile(r)
 	if err != nil {
@@ -168,166 +146,114 @@ func (f *FileInfo) addPEInfo() error {
 	}
 	defer peFile.Close()
 
-	// Пытаемся извлечь информацию о версии из ресурса.
-	f.addVSInfo(peFile)
-	// Если версия не извлечена, добавляем заглушку.
-	if _, ok := f.info["file"].(map[string]interface{})["pe"]; !ok {
-		f.addFileProperty("pe", "imphash", "<imphash>")
-		compilationTime := time.Unix(int64(peFile.FileHeader.TimeDateStamp), 0).UTC().Format(time.RFC3339)
-		f.addFileProperty("pe", "compilation", compilationTime)
+	// Вызываем Python‑скрипт для получения всех необходимых данных.
+	if err := f.addPEInfoViaPython(); err != nil {
+		logger.Log(LevelWarning, fmt.Sprintf("Error extracting PE info via Python: %v", err))
 	}
-
 	return nil
 }
 
-// --- Helper функции для парсинга VS_VERSIONINFO ---
-
-func align(offset int, alignment int) int {
-	if offset%alignment == 0 {
-		return offset
+// addPEInfoViaPython вызывает внешний Python‑скрипт (например, parser.py) для извлечения всей PE‑информации.
+func (f *FileInfo) addPEInfoViaPython() error {
+	// Записываем содержимое во временный файл.
+	tmpFile, err := ioutil.TempFile("", "peinfo_*.tmp")
+	if err != nil {
+		return err
 	}
-	return offset + (alignment - (offset % alignment))
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.Write(f.content); err != nil {
+		tmpFile.Close()
+		return err
+	}
+	tmpFile.Close()
+
+	// Определяем имя команды для Python в зависимости от ОС.
+	pythonCmd := "python3"
+	if runtime.GOOS == "windows" {
+		pythonCmd = "python"
+	}
+
+	// Определяем абсолютный путь до скрипта parser.py (он должен лежать в той же директории, что и исполняемый файл).
+	//exePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	scriptPath := filepath.Join("parser.py")
+
+	// Вызываем Python‑скрипт.
+	cmd := exec.Command(pythonCmd, scriptPath, tmpFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("python script error: %s, output: %s", err, output)
+	}
+
+	var info map[string]string
+	if err := json.Unmarshal(output, &info); err != nil {
+		return err
+	}
+	if errMsg, ok := info["error"]; ok && errMsg != "" {
+		return fmt.Errorf("python script error: %s", errMsg)
+	}
+	// Ожидаемые ключи: company, description, file_version, original_file_name, product, imphash, compilation.
+	keys := []string{"company", "description", "file_version", "original_file_name", "product", "imphash", "compilation"}
+	for _, key := range keys {
+		if val, ok := info[key]; ok && val != "" {
+			f.addFileProperty("pe", key, val)
+		}
+	}
+	return nil
 }
 
-func decodeUTF16LE(b []byte) string {
-	if len(b)%2 != 0 {
-		b = b[:len(b)-1]
+// addVSInfoWithPython вызывает внешний Python‑скрипт для извлечения версии.
+func (f *FileInfo) addVSInfoWithPython() error {
+	// Записываем содержимое во временный файл.
+	tmpFile, err := ioutil.TempFile("", "peinfo_*.tmp")
+	if err != nil {
+		return err
 	}
-	u16s := make([]uint16, len(b)/2)
-	for i := 0; i < len(u16s); i++ {
-		u16s[i] = binary.LittleEndian.Uint16(b[i*2 : i*2+2])
+	defer os.Remove(tmpFile.Name())
+	if _, err := tmpFile.Write(f.content); err != nil {
+		tmpFile.Close()
+		return err
 	}
-	if len(u16s) > 0 && u16s[len(u16s)-1] == 0 {
-		u16s = u16s[:len(u16s)-1]
-	}
-	return string(utf16.Decode(u16s))
-}
+	tmpFile.Close()
 
-func encodeUTF16LE(s string) []byte {
-	u16 := utf16.Encode([]rune(s))
-	buf := make([]byte, len(u16)*2)
-	for i, v := range u16 {
-		binary.LittleEndian.PutUint16(buf[i*2:], v)
-	}
-	return buf
-}
-
-type versionBlock struct {
-	Length      uint16
-	ValueLength uint16
-	Type        uint16
-	Key         string
-	Value       string
-	Children    []versionBlock
-}
-
-func parseVersionBlock(data []byte, offset int) (versionBlock, int, error) {
-	if offset+6 > len(data) {
-		return versionBlock{}, offset, fmt.Errorf("insufficient data for header")
-	}
-	length := binary.LittleEndian.Uint16(data[offset : offset+2])
-	valueLength := binary.LittleEndian.Uint16(data[offset+2 : offset+4])
-	vType := binary.LittleEndian.Uint16(data[offset+4 : offset+6])
-	block := versionBlock{
-		Length:      length,
-		ValueLength: valueLength,
-		Type:        vType,
-	}
-	startBlock := offset
-	offset += 6
-
-	keyStart := offset
-	for {
-		if offset+2 > len(data) {
-			break
-		}
-		if data[offset] == 0 && data[offset+1] == 0 {
-			break
-		}
-		offset += 2
-	}
-	if offset+2 > len(data) {
-		return block, offset, fmt.Errorf("unexpected end while reading key")
-	}
-	keyBytes := data[keyStart:offset]
-	block.Key = decodeUTF16LE(keyBytes)
-	offset += 2 // пропускаем завершающий нул
-	offset = align(offset, 4)
-
-	if valueLength > 0 {
-		if block.Type == 1 { // текстовое значение
-			valByteLen := int(valueLength) * 2
-			if offset+valByteLen > len(data) {
-				return block, offset, fmt.Errorf("insufficient data for value")
-			}
-			valueBytes := data[offset : offset+valByteLen]
-			block.Value = decodeUTF16LE(valueBytes)
-			offset += valByteLen
-		} else {
-			if offset+int(valueLength) > len(data) {
-				return block, offset, fmt.Errorf("insufficient data for binary value")
-			}
-			offset += int(valueLength)
-		}
-		offset = align(offset, 4)
+	// Определяем имя команды для Python в зависимости от ОС.
+	pythonCmd := "python3"
+	if runtime.GOOS == "windows" {
+		pythonCmd = "python"
 	}
 
-	endBlock := int(startBlock) + int(length)
-	for offset < endBlock {
-		if offset+2 > endBlock {
-			break
-		}
-		child, newOffset, err := parseVersionBlock(data, offset)
-		if err != nil {
-			break
-		}
-		block.Children = append(block.Children, child)
-		offset = newOffset
+	// Определяем абсолютный путь до скрипта extract_pe_info.py (находится в той же директории, что и исполняемый файл).
+	//exePath, err := os.Executable()
+	if err != nil {
+		return err
 	}
-	return block, int(startBlock) + int(length), nil
-}
+	scriptPath := filepath.Join("parser.py")
 
-func extractVersionInfo(peFile *pe.File) ([]byte, error) {
-	for _, section := range peFile.Sections {
-		if section.Name == ".rsrc" {
-			data, err := section.Data()
-			if err != nil {
-				return nil, err
-			}
-			key := "VS_VERSIONINFO"
-			keyBytes := encodeUTF16LE(key)
-			idx := bytes.Index(data, keyBytes)
-			if idx >= 0 {
-				start := idx - 6 // предполагаем, что заголовок находится за 6 байт до найденного ключа
-				if start < 0 {
-					start = 0
-				}
-				if start+2 > len(data) {
-					return nil, fmt.Errorf("not enough data")
-				}
-				length := int(binary.LittleEndian.Uint16(data[start : start+2]))
-				if start+length > len(data) {
-					return nil, fmt.Errorf("version info length out of bounds")
-				}
-				return data[start : start+length], nil
-			}
+	cmd := exec.Command(pythonCmd, scriptPath, tmpFile.Name())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("python script error: %s, output: %s", err, output)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	var info map[string]string
+	if err := json.Unmarshal(output, &info); err != nil {
+		return err
+	}
+	if errMsg, ok := info["error"]; ok && errMsg != "" {
+		return fmt.Errorf("python script error: %s", errMsg)
+	}
+	// Добавляем извлечённые поля.
+	for key, val := range info {
+		switch key {
+		case "company", "description", "file_version", "original_file_name", "product":
+			f.addFileProperty("pe", key, val)
 		}
 	}
-	return nil, fmt.Errorf("version info not found")
-}
-
-func extractStringProperties(root versionBlock) map[string]string {
-	props := make(map[string]string)
-	for _, child := range root.Children {
-		if child.Key == "StringFileInfo" {
-			for _, stringTable := range child.Children {
-				for _, strBlock := range stringTable.Children {
-					if strBlock.Key != "" && strBlock.Value != "" {
-						props[strBlock.Key] = strBlock.Value
-					}
-				}
-			}
-		}
-	}
-	return props
+	return nil
 }
