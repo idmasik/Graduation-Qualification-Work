@@ -1,123 +1,245 @@
+// filesystem_os_test.go
 package main
 
-// import (
-// 	"os"
-// 	"path/filepath"
-// 	"reflect"
-// 	"strings"
-// 	"testing"
-// )
+import (
+	"fmt"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"sort"
+	"testing"
+)
 
-// type mockOutput struct {
-// 	files []string
-// }
+// FakeOutput реализует интерфейс CollectorOutput и собирает вызовы методов AddCollectedFile и AddCollectedFileInfo.
+type FakeOutput struct {
+	collectedFiles []collectedFile
+}
 
-// func (m *mockOutput) AddCollectedFileInfo(artifact string, path *PathObject) error {
-// 	return nil
-// }
+type collectedFile struct {
+	artifact string
+	pathObj  *PathObject
+}
 
-// func (m *mockOutput) AddCollectedFile(artifact string, path *PathObject) error {
-// 	relPath := strings.TrimPrefix(path.path, path.filesystem.(*OSFileSystem).rootPath)
-// 	relPath = strings.TrimPrefix(relPath, string(filepath.Separator))
-// 	relPath = filepath.ToSlash(relPath)
-// 	m.files = append(m.files, relPath)
-// 	return nil
-// }
+func (fo *FakeOutput) AddCollectedFileInfo(artifact string, pathObj *PathObject) error {
+	// Для тестов не требуется собирать file info.
+	return nil
+}
 
-// func createTestFS(t *testing.T, structure map[string]string) string {
-// 	tmpDir := t.TempDir()
-// 	for path, content := range structure {
-// 		fullPath := filepath.Join(tmpDir, path)
-// 		dir := filepath.Dir(fullPath)
-// 		if err := os.MkdirAll(dir, 0755); err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if content != "" {
-// 			if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-// 				t.Fatal(err)
-// 			}
-// 		}
-// 	}
-// 	return tmpDir
-// }
+func (fo *FakeOutput) AddCollectedFile(artifact string, pathObj *PathObject) error {
+	if artifact != "TestArtifact" {
+		return fmt.Errorf("unexpected artifact: %s", artifact)
+	}
+	fo.collectedFiles = append(fo.collectedFiles, collectedFile{artifact, pathObj})
+	return nil
+}
 
-// func TestPathResolutionSimple(t *testing.T) {
-// 	tmpDir := createTestFS(t, map[string]string{
-// 		"root.txt": "test",
-// 	})
+// resolvedPaths вычисляет относительные пути собранных файлов.
+func resolvedPaths(fs *OSFileSystem, output *FakeOutput) []string {
+	var paths []string
+	for _, cf := range output.collectedFiles {
+		paths = append(paths, fs.relativePath(cf.pathObj.path))
+	}
+	return paths
+}
 
-// 	fs := NewOSFileSystem(tmpDir)
-// 	mockOut := &mockOutput{}
+// getFsRoot возвращает абсолютный путь к директории test_data/filesystem,
+// относительно расположения файла теста.
+func getFsRoot(t *testing.T) string {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("Не удалось получить путь к файлу теста")
+	}
+	return filepath.Join(filepath.Dir(filename), "test_data", "filesystem")
+}
 
-// 	fs.AddPattern("TestArtifact", filepath.Join(tmpDir, "root.txt"))
-// 	fs.Collect(mockOut)
+// fp возвращает полный путь, объединив fsRoot с относительным путём.
+func fp(fsRoot, relative string) string {
+	return filepath.Join(fsRoot, filepath.FromSlash(relative))
+}
 
-// 	expected := []string{"root.txt"}
-// 	if !reflect.DeepEqual(mockOut.files, expected) {
-// 		t.Errorf("Expected %v, got %v", expected, mockOut.files)
-// 	}
-// }
+// equalStringSlices сравнивает два слайса строк без учёта порядка.
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	aCopy := append([]string(nil), a...)
+	bCopy := append([]string(nil), b...)
+	sort.Strings(aCopy)
+	sort.Strings(bCopy)
+	return reflect.DeepEqual(aCopy, bCopy)
+}
 
-// func TestPathResolutionGlobbingStar(t *testing.T) {
-// 	tmpDir := createTestFS(t, map[string]string{
-// 		"root.txt":  "test",
-// 		"root2.txt": "test",
-// 		"test.txt":  "test",
-// 		"dir/file":  "test",
-// 	})
+func TestPathResolutionSimple(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
 
-// 	fs := NewOSFileSystem(tmpDir)
-// 	mockOut := &mockOutput{}
+	fs.AddPattern("TestArtifact", fp(fsRoot, "root.txt"), "")
+	fs.Collect(output)
 
-// 	fs.AddPattern("TestArtifact", filepath.Join(tmpDir, "*.txt"))
-// 	fs.Collect(mockOut)
+	paths := resolvedPaths(fs, output)
+	expected := []string{"root.txt"}
+	if !reflect.DeepEqual(paths, expected) {
+		t.Errorf("Ожидалось %v, получено %v", expected, paths)
+	}
+}
 
-// 	expected := []string{"root.txt", "root2.txt", "test.txt"}
-// 	if len(mockOut.files) != len(expected) {
-// 		t.Fatalf("Expected %d files, got %d", len(expected), len(mockOut.files))
-// 	}
-// 	for _, f := range expected {
-// 		if !contains(mockOut.files, f) {
-// 			t.Errorf("Missing file %s", f)
-// 		}
-// 	}
-// }
+func TestPathResolutionSimple2(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
 
-// func TestPathResolutionRecursiveStar(t *testing.T) {
-// 	tmpDir := createTestFS(t, map[string]string{
-// 		"l1/l2/l2.txt":       "test",
-// 		"l1/l2/l3/l3.txt":    "test",
-// 		"l1/l2/l3/l4/l4.txt": "test",
-// 	})
+	fs.AddPattern("TestArtifact", fp(fsRoot, "l1/l2/l2.txt"), "")
+	fs.Collect(output)
 
-// 	fs := NewOSFileSystem(tmpDir)
-// 	mockOut := &mockOutput{}
+	paths := resolvedPaths(fs, output)
+	expected := []string{"l1/l2/l2.txt"}
+	if !reflect.DeepEqual(paths, expected) {
+		t.Errorf("Ожидалось %v, получено %v", expected, paths)
+	}
+}
 
-// 	fs.AddPattern("TestArtifact", filepath.Join(tmpDir, "**/l2.txt"))
-// 	fs.Collect(mockOut)
+func TestPathResolutionGlobbingStar(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
 
-// 	expected := []string{"l1/l2/l2.txt"}
-// 	if !reflect.DeepEqual(mockOut.files, expected) {
-// 		t.Errorf("Expected %v, got %v", expected, mockOut.files)
-// 	}
-// }
+	fs.AddPattern("TestArtifact", fp(fsRoot, "*.txt"), "")
+	fs.Collect(output)
 
-// func TestIsSymlink(t *testing.T) {
-// 	tmpDir := t.TempDir()
-// 	target := filepath.Join(tmpDir, "target.txt")
-// 	if err := os.WriteFile(target, []byte("test"), 0644); err != nil {
-// 		t.Fatal(err)
-// 	}
+	paths := resolvedPaths(fs, output)
+	expected := []string{"root.txt", "root2.txt", "test.txt"}
+	if !equalStringSlices(paths, expected) {
+		t.Errorf("Ожидалось множество %v, получено %v", expected, paths)
+	}
+}
 
-// 	symlink := filepath.Join(tmpDir, "link.txt")
-// 	if err := os.Symlink(target, symlink); err != nil {
-// 		t.Fatal(err)
-// 	}
+func TestPathResolutionGlobbingStar2(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
 
-// 	fs := NewOSFileSystem(tmpDir)
-// 	pathObj := fs.GetFullPath(symlink)
+	fs.AddPattern("TestArtifact", fp(fsRoot, "root*.txt"), "")
+	fs.Collect(output)
 
-// 	if !fs.IsSymlink(pathObj) {
-// 		t.Error("Expected symlink detection")
-// 	}
-// }
+	paths := resolvedPaths(fs, output)
+	expected := []string{"root.txt", "root2.txt"}
+	if !equalStringSlices(paths, expected) {
+		t.Errorf("Ожидалось множество %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionGlobbingQuestion(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "root?.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{"root2.txt"}
+	if !reflect.DeepEqual(paths, expected) {
+		t.Errorf("Ожидалось %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionGlobbingStarDirectory(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "l1/*/l2.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{"l1/l2/l2.txt"}
+	if !reflect.DeepEqual(paths, expected) {
+		t.Errorf("Ожидалось %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionRecursiveStar(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "**/l2.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{"l1/l2/l2.txt"}
+	if !reflect.DeepEqual(paths, expected) {
+		t.Errorf("Ожидалось %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionRecursiveStarDefaultDepth(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "**/*.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{
+		"l1/l1.txt",
+		"l1/l2/l2.txt",
+		"l1/l2/l3/l3.txt",
+	}
+	if !equalStringSlices(paths, expected) {
+		t.Errorf("Ожидалось множество %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionRecursiveStarCustomDepth(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "**4/*.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{
+		"l1/l1.txt",
+		"l1/l2/l2.txt",
+		"l1/l2/l3/l3.txt",
+		"l1/l2/l3/l4/l4.txt",
+	}
+	if !equalStringSlices(paths, expected) {
+		t.Errorf("Ожидалось множество %v, получено %v", expected, paths)
+	}
+}
+
+func TestPathResolutionRecursiveStarRoot(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+	output := &FakeOutput{}
+
+	fs.AddPattern("TestArtifact", fp(fsRoot, "**.txt"), "")
+	fs.Collect(output)
+
+	paths := resolvedPaths(fs, output)
+	expected := []string{
+		"root.txt",
+		"root2.txt",
+		"test.txt",
+		"l1/l1.txt",
+		"l1/l2/l2.txt",
+	}
+	if !equalStringSlices(paths, expected) {
+		t.Errorf("Ожидалось множество %v, получено %v", expected, paths)
+	}
+}
+
+func TestIsSymlink(t *testing.T) {
+	fsRoot := getFsRoot(t)
+	fs := NewOSFileSystem(fsRoot)
+
+	pathObj := fs.GetFullPath(fp(fsRoot, "root.txt"))
+	if fs.IsSymlink(pathObj) {
+		t.Errorf("Ожидалось, что %q не является символьной ссылкой", pathObj.path)
+	}
+}
