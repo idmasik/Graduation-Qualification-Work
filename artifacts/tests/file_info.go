@@ -119,7 +119,7 @@ func (f *FileInfo) Compute() map[string]interface{} {
 			f.mimeType = guessedMime
 		}
 	}
-
+	//НЕ УВЕРЕН, ЧТО ТАК 100% можно  if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' то f.mimeType = "application/x-msdownload"
 	// Если файл начинается с сигнатуры "MZ", считаем его PE‑файлом.
 	if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' {
 		// Переопределяем MIME‑тип для PE‑файлов.
