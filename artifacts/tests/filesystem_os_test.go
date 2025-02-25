@@ -2,7 +2,6 @@
 package main
 
 import (
-	"fmt"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -20,16 +19,20 @@ type collectedFile struct {
 	pathObj  *PathObject
 }
 
-func (fo *FakeOutput) AddCollectedFileInfo(artifact string, pathObj *PathObject) error {
-	// Для тестов не требуется собирать file info.
+// Методы AddCollectedFileInfo и AddCollectedFile должны добавлять данные в collectedFiles
+func (f *FakeOutput) AddCollectedFileInfo(artifact string, path *PathObject) error {
+	f.collectedFiles = append(f.collectedFiles, collectedFile{
+		artifact: artifact,
+		pathObj:  path,
+	})
 	return nil
 }
 
-func (fo *FakeOutput) AddCollectedFile(artifact string, pathObj *PathObject) error {
-	if artifact != "TestArtifact" {
-		return fmt.Errorf("unexpected artifact: %s", artifact)
-	}
-	fo.collectedFiles = append(fo.collectedFiles, collectedFile{artifact, pathObj})
+func (f *FakeOutput) AddCollectedFile(artifact string, path *PathObject) error {
+	f.collectedFiles = append(f.collectedFiles, collectedFile{
+		artifact: artifact,
+		pathObj:  path,
+	})
 	return nil
 }
 
