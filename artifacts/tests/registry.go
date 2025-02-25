@@ -552,19 +552,3 @@ func convertToStringSlice(val interface{}) ([]string, bool) {
 	}
 	return result, true
 }
-
-// ArtifactDefinition представляет полное определение артефакта
-
-type ArtifactDefinition struct {
-	Name        string
-	Aliases     []string
-	Description string
-	Sources     []*Source
-	SupportedOS []string
-	URLs        []string
-}
-
-type Source struct {
-	TypeIndicator string
-	Attributes    map[string]interface{}
-}
