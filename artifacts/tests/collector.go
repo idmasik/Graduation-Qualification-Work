@@ -30,10 +30,30 @@ func NewCollector(platform string, collectors []AbstractCollector) *Collector {
 		// Для Unix-подобных систем инициализируем переменные хоста
 		hv = NewUnixHostVariables()
 	}
+
+	// Создаём обязательные коллекторы
+	var defaultCollectors []AbstractCollector
+
+	// Инициализация FileSystemManager
+	fsManager, err := NewFileSystemManager()
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка создания FileSystemManager: %v", err))
+	} else {
+		defaultCollectors = append(defaultCollectors, fsManager)
+	}
+
+	// Инициализация CommandExecutor
+	cmdExecutor := NewCommandExecutor()
+	defaultCollectors = append(defaultCollectors, cmdExecutor)
+
+	// Объединяем переданные коллекторы с обязательными (если требуется)
+	// В данном случае игнорируем переданные collectors, как в Python примере
+	allCollectors := defaultCollectors
+
 	return &Collector{
 		platform:   platform,
 		variables:  hv,
-		collectors: collectors,
+		collectors: allCollectors,
 		sources:    0,
 	}
 }
