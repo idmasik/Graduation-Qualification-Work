@@ -21,15 +21,9 @@ func (a *FilePathObjectAdapter) GetPath() string {
 	return a.path
 }
 
-// ReadChunks вызывает метод ReadChunks у обёрнутого PathObject,
-// получая ([]byte, error), и оборачивает результат в срез ([][]byte, error),
-// чтобы удовлетворить требуемую сигнатуру.
+// ReadChunks вызывает метод ReadChunks у обёрнутого PathObject и возвращает его результат.
 func (a *FilePathObjectAdapter) ReadChunks() ([][]byte, error) {
-	chunk, err := a.PathObject.ReadChunks()
-	if err != nil {
-		return nil, err
-	}
-	return [][]byte{chunk}, nil
+	return a.PathObject.ReadChunks()
 }
 
 // -------------------------------------------------------------------

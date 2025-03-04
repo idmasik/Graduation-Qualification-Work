@@ -28,11 +28,17 @@ func (p *PathObject) ListDirectory() []*PathObject {
 	return p.filesystem.ListDirectory(p)
 }
 
-func (p *PathObject) GetPath(path string) *PathObject {
+// GetPath(): возвращает сам путь текущего объекта (например, "/home/user/file.txt").
+// GetChild(path string): принимает относительный путь (например, "subdir") и возвращает новый PathObject, представляющий путь, полученный путем объединения текущего пути и указанного относительного пути.
+func (p *PathObject) GetChild(path string) *PathObject {
 	return p.filesystem.GetPath(p, path)
 }
 
-func (p *PathObject) ReadChunks() ([]byte, error) {
+func (p *PathObject) GetPath() string {
+	return p.path
+}
+
+func (p *PathObject) ReadChunks() ([][]byte, error) {
 	return p.filesystem.ReadChunks(p)
 }
 
@@ -141,7 +147,7 @@ func (r *RegularPathComponent) Generate() <-chan *PathObject {
 	go func() {
 		defer close(out)
 		for parent := range r.source {
-			path := parent.GetPath(r.path)
+			path := parent.GetChild(r.path)
 			if path != nil {
 				if r.directory && path.IsDirectory() {
 					out <- path

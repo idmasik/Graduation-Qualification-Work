@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -31,7 +30,7 @@ var (
 
 type FileSystem interface {
 	AddPattern(artifact, pattern, sourceType string)
-	Collect(output CollectorOutput)
+	Collect(output *Outputs)
 	relativePath(filepath string) string
 	parse(pattern string) []GeneratorFunc
 	baseGenerator() <-chan *PathObject
@@ -41,7 +40,7 @@ type FileSystem interface {
 	ListDirectory(p *PathObject) []*PathObject
 	GetPath(parent *PathObject, name string) *PathObject
 	GetFullPath(fullpath string) *PathObject
-	ReadChunks(p *PathObject) ([]byte, error)
+	ReadChunks(p *PathObject) ([][]byte, error)
 	GetSize(p *PathObject) int64
 }
 
@@ -74,18 +73,15 @@ func (afs *ArtifactFileSystem) AddPattern(artifact, pattern, sourceType string) 
 	})
 }
 
-func (afs *ArtifactFileSystem) Collect(output CollectorOutput) {
+func (afs *ArtifactFileSystem) Collect(output *Outputs) {
 	for _, pat := range afs.patterns {
 		logger.Log(LevelDebug, fmt.Sprintf("Collecting pattern '%s' for artifact '%s'", pat.pattern, pat.artifact))
-
 		relativePattern := afs.fs.relativePath(pat.pattern)
 		genFuncs := afs.fs.parse(relativePattern)
-
 		gen := afs.fs.baseGenerator()
 		for _, gf := range genFuncs {
 			gen = gf(gen)
 		}
-
 		for pathObj := range gen {
 			if pat.sourceType == FILE_INFO_TYPE {
 				output.AddCollectedFileInfo(pat.artifact, pathObj)
@@ -215,7 +211,7 @@ func (fs *OSFileSystem) GetFullPath(fullpath string) *PathObject {
 	}
 }
 
-func (fs *OSFileSystem) ReadChunks(p *PathObject) ([]byte, error) {
+func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	if !fs.IsFile(p) {
 		return nil, nil
 	}
@@ -226,13 +222,24 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([]byte, error) {
 	}
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
+	var chunks [][]byte
 	buf := make([]byte, CHUNK_SIZE)
-	n, err := reader.Read(buf)
-	if err != nil && err != io.EOF {
-		return nil, err
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			// Создаем копию прочитанного среза
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			chunks = append(chunks, chunk)
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
 	}
-	return buf[:n], nil
+	return chunks, nil
 }
 
 func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
@@ -245,12 +252,6 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 
 // // GeneratorFunc определяет функцию-генератор, которая принимает исходный канал объектов пути и возвращает новый канал.
 type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
-
-// /ТУТ ВОЗМОЖНО НАДО ПЕРДЕЛАТЬ НА ДРУГОЙ ИНТЕРФЕЙС ИЗ OUTPUT
-type CollectorOutput interface {
-	AddCollectedFileInfo(artifact string, path *PathObject) error
-	AddCollectedFile(artifact string, path *PathObject) error
-}
 
 //------------------------------------------------------------------------------
 // Реализация TSKFileSystem с использованием пакета github.com/dutchcoders/go-tsk
@@ -273,7 +274,8 @@ func (fs *TSKFileSystem) AddPattern(artifact, pattern, sourceType string) {
 	logger.Log(LevelDebug, fmt.Sprintf("TSKFileSystem.AddPattern (заглушка): artifact=%s, pattern=%s, sourceType=%s", artifact, pattern, sourceType))
 }
 
-func (fs *TSKFileSystem) Collect(output CollectorOutput) {
+// В TSKFileSystem
+func (fs *TSKFileSystem) Collect(output *Outputs) {
 	logger.Log(LevelDebug, "TSKFileSystem.Collect (заглушка) вызвана")
 }
 
@@ -305,8 +307,12 @@ func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
 		path:       fullpath,
 	}
 }
-func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([]byte, error) { return nil, nil }
-func (fs *TSKFileSystem) GetSize(p *PathObject) int64              { return 0 }
+func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
+	// Заглушка: можно вернуть nil или пустой срез
+	return nil, nil
+}
+
+func (fs *TSKFileSystem) GetSize(p *PathObject) int64 { return 0 }
 
 // -----------------------------------------------------------------------------
 // FileSystemManager – менеджер файловых систем и сборки артефактов.
@@ -412,7 +418,8 @@ func (fsm *FileSystemManager) AddPattern(artifact, pattern, sourceType string) {
 }
 
 // Collect проходит по всем файловым системам и вызывает их Collect для сбора артефактов.
-func (fsm *FileSystemManager) Collect(output CollectorOutput) {
+
+func (fsm *FileSystemManager) Collect(output *Outputs) {
 	for mount, fs := range fsm.filesystems {
 		logger.Log(LevelDebug, fmt.Sprintf("Начало сбора для '%s'", mount))
 		fs.Collect(output)

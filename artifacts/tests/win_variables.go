@@ -199,6 +199,12 @@ func windowsInitFunc(hv *HostVariables) {
 	}
 }
 
+// NewWindowsHostVariables создаёт и инициализирует HostVariables для Windows,
+// используя функцию windowsInitFunc для загрузки переменных из реестра и WMI.
+func NewWindowsHostVariables() *HostVariables {
+	return NewHostVariables(windowsInitFunc)
+}
+
 // func main() {
 // 	hv := NewHostVariables(windowsInitFunc)
 
