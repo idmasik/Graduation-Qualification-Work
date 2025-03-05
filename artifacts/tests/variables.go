@@ -2,9 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 )
+
+// -------------------------
+// HostVariables и Substitution
+// -------------------------
 
 type Variable struct {
 	Name  string
@@ -29,7 +34,8 @@ func NewHostVariables(initFunc func(*HostVariables)) *HostVariables {
 }
 
 func (hv *HostVariables) AddVariable(name, value string) {
-	re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(name))
+	// Создаем регулярное выражение, которое ищет точное совпадение с переменной.
+	re := regexp.MustCompile(regexp.QuoteMeta(name))
 	values := make(map[string]struct{})
 	values[value] = struct{}{}
 	hv.variables = append(hv.variables, Variable{
@@ -55,34 +61,89 @@ func (hv *HostVariables) ResolveVariables() {
 	}
 }
 
+// Обновленная функция Substitute, которая ищет шаблоны вида %%имя%% и заменяет их на значение из окружения или из HostVariables.
 func (hv *HostVariables) Substitute(value string) map[string]struct{} {
 	values := make(map[string]struct{})
+	// Регулярное выражение для поиска шаблонов вида %%что-то%%
+	re := regexp.MustCompile(`%%([^%]+)%%`)
+	substituted := value
 
-	if strings.Count(value, "%") < 2 {
-		values[value] = struct{}{}
-		return values
-	}
-
-	hasSubstitution := false
-
-	for _, variable := range hv.variables {
-		for variableValue := range variable.Value {
-			escapedValue := strings.ReplaceAll(variableValue, `\`, `\\`)
-			replaced := variable.Re.ReplaceAllString(value, escapedValue)
-			if replaced != value {
-				hasSubstitution = true
-				substituted := hv.Substitute(replaced)
-				for s := range substituted {
-					values[s] = struct{}{}
+	// Цикл для замены (вложенные замены)
+	for {
+		matches := re.FindAllStringSubmatch(substituted, -1)
+		if len(matches) == 0 {
+			break
+		}
+		changed := false
+		for _, match := range matches {
+			fullMatch := match[0] // например, "%%environ_systemroot%%"
+			varName := match[1]   // например, "environ_systemroot"
+			// Сначала ищем в переменных хоста
+			replaced := ""
+			for _, variable := range hv.variables {
+				if strings.EqualFold(variable.Name, fullMatch) {
+					// Берем первое значение из набора
+					for v := range variable.Value {
+						replaced = v
+						break
+					}
 				}
 			}
+			// Если не найдено в hv, пробуем взять из окружения
+			if replaced == "" {
+				// Пробуем в верхнем регистре
+				replaced = os.Getenv(strings.ToUpper(varName))
+				if replaced == "" {
+					// Пробуем как есть
+					replaced = os.Getenv(varName)
+				}
+			}
+			if replaced != "" {
+				substituted = strings.ReplaceAll(substituted, fullMatch, replaced)
+				changed = true
+			} else {
+				hv.logger.Log(LevelWarning, fmt.Sprintf("Value '%s' contains unsupported variable '%s'", value, fullMatch))
+				// Чтобы не зациклиться, прерываем замену, оставляя шаблон как есть.
+				break
+			}
+		}
+		if !changed {
+			break
 		}
 	}
+	values[substituted] = struct{}{}
+	return values
+}
 
-	if !hasSubstitution {
-		hv.logger.Log(LevelWarning, fmt.Sprintf("Value '%s' contains unsupported variables", value))
-		values[value] = struct{}{}
+// -------------------------
+// Функция инициализации переменных (defaultInitFunc)
+// -------------------------
+
+func defaultInitFunc(hv *HostVariables) {
+	// Для Windows: добавляем переменные из окружения.
+	if sysroot := os.Getenv("SYSTEMROOT"); sysroot != "" {
+		hv.AddVariable("%%environ_systemroot%%", sysroot)
+	}
+	if userprofile := os.Getenv("USERPROFILE"); userprofile != "" {
+		hv.AddVariable("%%users.userprofile%%", userprofile)
+	}
+	if localappdata := os.Getenv("LOCALAPPDATA"); localappdata != "" {
+		hv.AddVariable("%%users.localappdata%%", localappdata)
+	}
+	if allusersprofile := os.Getenv("ALLUSERSPROFILE"); allusersprofile != "" {
+		hv.AddVariable("%%environ_allusersprofile%%", allusersprofile)
+	}
+	if sysdrive := os.Getenv("SystemDrive"); sysdrive != "" {
+		hv.AddVariable("%%environ_systemdrive%%", sysdrive)
+	}
+	if windir := os.Getenv("WINDIR"); windir != "" {
+		hv.AddVariable("%%environ_windir%%", windir)
 	}
 
-	return values
+	// Для Unix‑подобных систем.
+	if home := os.Getenv("HOME"); home != "" {
+		hv.AddVariable("%%users.homedir%%", home)
+		// Иногда можно использовать HOME для локальных данных
+		hv.AddVariable("%%users.localappdata%%", home)
+	}
 }

@@ -268,12 +268,3 @@ func TestJsonArtifactsReader_ReadFile(t *testing.T) {
 		t.Errorf("Expected 7 artifacts, got %d", len(artifacts))
 	}
 }
-
-func contains(s []string, str string) bool {
-	for _, v := range s {
-		if v == str {
-			return true
-		}
-	}
-	return false
-}

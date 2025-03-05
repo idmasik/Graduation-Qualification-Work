@@ -11,35 +11,7 @@ import (
 	"github.com/shirou/gopsutil/disk"
 )
 
-// fakeCollector реализует интерфейс CollectorOutput и собирает все вызовы в срез.
-type fakeCollector struct {
-	collected []*PathObject
-}
-
-func (fc *fakeCollector) AddCollectedFileInfo(artifact string, path *PathObject) error {
-	fc.collected = append(fc.collected, path)
-	return nil
-}
-
-func (fc *fakeCollector) AddCollectedFile(artifact string, path *PathObject) error {
-	fc.collected = append(fc.collected, path)
-	return nil
-}
-
-// fileArtifact создаёт артефакт с типом источника TYPE_INDICATOR_FILE и атрибутом paths.
-func fileArtifact(name, pattern string) *ArtifactDefinition {
-	artifact := NewArtifactDefinition(name, nil, "")
-	// Если AppendSource возвращает ошибку – тест прервётся.
-	_, err := artifact.AppendSource(TYPE_INDICATOR_FILE, map[string]interface{}{
-		"paths": []interface{}{pattern},
-	})
-	if err != nil {
-		panic(err)
-	}
-	return artifact
-}
-
-// stringSlicesEqualIgnoreOrder сравнивает два среза строк без учета порядка.
+// stringSlicesEqualIgnoreOrder сравнивает два среза строк без учёта порядка.
 func stringSlicesEqualIgnoreOrder(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -62,16 +34,43 @@ func stringSlicesEqual(a, b []string) bool {
 	return reflect.DeepEqual(a, b)
 }
 
+// resolvedPaths преобразует собранные файлы из Outputs в срез относительных путей.
+// Для каждого полного пути (ключа в addedFiles) вычисляется относительный путь от fs.rootPath.
+func resolvedPaths(fs *OSFileSystem, output *Outputs) []string {
+	var paths []string
+	for fullpath := range output.addedFiles {
+		rel, err := filepath.Rel(fs.rootPath, fullpath)
+		if err != nil {
+			rel = fullpath
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// fileArtifact создаёт артефакт с типом источника TYPE_INDICATOR_FILE и атрибутом paths.
+func fileArtifact(name, pattern string) *ArtifactDefinition {
+	artifact := NewArtifactDefinition(name, nil, "")
+	_, err := artifact.AppendSource(TYPE_INDICATOR_FILE, map[string]interface{}{
+		"paths": []interface{}{pattern},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return artifact
+}
+
 func TestGetPath(t *testing.T) {
 	fsm, err := NewFileSystemManager()
 	if err != nil {
 		t.Fatalf("Error creating FileSystemManager: %v", err)
 	}
 
-	// Для теста создаём временную директорию и определяем две фиктивные точки монтирования:
-	// 1. Для пути "/passwords.txt" – точка монтирования "/" с fstype, поддерживаемым TSKFileSystem.
-	// 2. Для пути, основанного на fsRoot, – другая точка с fstype, не поддерживаемым TSK, т.е. OSFileSystem.
-	fsRoot := ("C:\\Users\\Dmitr\\Desktop\\Graduation-Qualification-Work\\artifacts\\tests\\test_data")
+	// Для теста создаём фиктивную директорию и определяем две точки монтирования:
+	// 1. Для пути "/passwords.txt" – точка монтирования "/" с поддерживаемым fstype (TSKFileSystem).
+	// 2. Для пути, основанного на fsRoot – точка монтирования с неподдерживаемым fstype (OSFileSystem).
+	fsRoot := "C:\\Users\\Dmitr\\Desktop\\Graduation-Qualification-Work\\artifacts\\tests\\test_data"
 	fmt.Printf("Временная директория: %s", fsRoot)
 	fakePartitions := []disk.PartitionStat{
 		{
@@ -111,11 +110,10 @@ func TestGetPath(t *testing.T) {
 	case *OSFileSystem:
 		// Всё верно.
 	default:
-		t.Errorf("Expected OSFileSystem for '%s', got %T", rootPath, po.filesystem) //проходит
+		t.Errorf("Expected OSFileSystem for '%s', got %T", rootPath, po.filesystem)
 	}
 }
 
-// TestAddArtifacts проверяет регистрацию двух артефактов и сбор путей.
 func TestAddArtifacts(t *testing.T) {
 	fsm, err := NewFileSystemManager()
 	if err != nil {
@@ -124,12 +122,12 @@ func TestAddArtifacts(t *testing.T) {
 
 	fsRoot := t.TempDir()
 
-	// Создаём фейковые точки монтирования с сортировкой
+	// Создаём фейковые точки монтирования с сортировкой: длинное значение Mountpoint имеет приоритет.
 	fakePartitions := []disk.PartitionStat{
 		{
 			Device:     "/dev/sda1",
-			Mountpoint: "/", // TSKFileSystem (ntfs)
-			Fstype:     "ntfs",
+			Mountpoint: "/",
+			Fstype:     "ntfs", // TSKFileSystem (ntfs)
 			Opts:       "",
 		},
 		{
@@ -139,13 +137,14 @@ func TestAddArtifacts(t *testing.T) {
 			Opts:       "",
 		},
 	}
-	// Явная сортировка точек монтирования
 	sort.Slice(fakePartitions, func(i, j int) bool {
 		return len(fakePartitions[i].Mountpoint) > len(fakePartitions[j].Mountpoint)
 	})
 	fsm.mountPoints = fakePartitions
 
-	output := &FakeOutput{}
+	output := createTestOutputs(t)
+	defer output.Close()
+
 	hv := NewHostVariables(func(h *HostVariables) {})
 
 	// Регистрируем артефакт для /passwords.txt (TSK)
@@ -168,15 +167,14 @@ func TestAddArtifacts(t *testing.T) {
 
 	fsm.Collect(output)
 
-	// Логирование для отладки
-	t.Logf("Collected files: %+v", output.collectedFiles)
+	t.Logf("Collected files: %+v", output.addedFiles)
 
-	// Преобразуем пути через OSFileSystem
+	// Преобразуем пути через OSFileSystem.
 	osfs := NewOSFileSystem(fsRoot)
 	collected := resolvedPaths(osfs, output)
 	expected := []string{
-		"/passwords.txt",            // Ожидается абсолютный путь для TSK
-		osfs.relativePath(rootPath), // Ожидается "root.txt"
+		"/passwords.txt",            // Ожидается абсолютный путь для TSK.
+		osfs.relativePath(rootPath), // Ожидается "root.txt" для OS.
 	}
 
 	if !stringSlicesEqualIgnoreOrder(collected, expected) {
@@ -184,8 +182,6 @@ func TestAddArtifacts(t *testing.T) {
 	}
 }
 
-// TestArtifactAllMountpoints проверяет, что при паттерне, начинающемся с обратного слеша,
-// он применяется ко всем точкам монтирования TSK.
 func TestArtifactAllMountpoints(t *testing.T) {
 	fsm, err := NewFileSystemManager()
 	if err != nil {
@@ -202,7 +198,9 @@ func TestArtifactAllMountpoints(t *testing.T) {
 	}
 	fsm.mountPoints = fakePartitions
 
-	output := &FakeOutput{}
+	output := createTestOutputs(t)
+	defer output.Close()
+
 	hv := NewHostVariables(func(h *HostVariables) {})
 
 	artifact := fileArtifact("TestArtifact", "\\passwords.txt")
@@ -221,7 +219,6 @@ func TestArtifactAllMountpoints(t *testing.T) {
 	}
 }
 
-// TestNoMountpoint проверяет, что для пути, для которого не найдена точка монтирования, возвращается ошибка.
 func TestNoMountpoint(t *testing.T) {
 	fsm, err := NewFileSystemManager()
 	if err != nil {

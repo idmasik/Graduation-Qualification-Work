@@ -24,14 +24,14 @@ type Collector struct {
 
 // NewCollector создаёт новый Collector для указанной платформы.
 // Параметр collectors должен содержать список объектов, реализующих интерфейс AbstractCollector.
-func NewCollector(platform string, collectors []AbstractCollector) *Collector {
-	var hv *HostVariables
-	if platform != "Windows" {
-		// Для Unix-подобных систем инициализируем переменные хоста
-		hv = NewUnixHostVariables()
-	}
 
-	// Создаём обязательные коллекторы
+// NewCollector создаёт новый Collector для указанной платформы,
+// при этом переменные хоста инициализируются независимо от платформы.
+// NewCollector создаёт новый Collector для указанной платформы с инициализированными переменными.
+func NewCollector(platform string, collectors []AbstractCollector) *Collector {
+	// Инициализируем переменные хоста независимо от платформы.
+	hv := NewHostVariables(defaultInitFunc)
+
 	var defaultCollectors []AbstractCollector
 
 	// Инициализация FileSystemManager
@@ -46,8 +46,7 @@ func NewCollector(platform string, collectors []AbstractCollector) *Collector {
 	cmdExecutor := NewCommandExecutor()
 	defaultCollectors = append(defaultCollectors, cmdExecutor)
 
-	// Объединяем переданные коллекторы с обязательными (если требуется)
-	// В данном случае игнорируем переданные collectors, как в Python примере
+	// Объединяем переданные коллектора с обязательными
 	allCollectors := defaultCollectors
 
 	return &Collector{
