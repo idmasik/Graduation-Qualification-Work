@@ -571,32 +571,6 @@ func (fsm *FileSystemManager) getMountPoint(path string) (*disk.PartitionStat, e
 	return best, nil
 }
 
-// getFilesystem возвращает экземпляр FileSystem для указанного пути.
-// Если файловая система ещё не создана, производится выбор между TSKFileSystem (если тип поддерживается)
-// и OSFileSystem.
-// func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
-// 	mp, err := fsm.getMountPoint(path)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	if fs, ok := fsm.filesystems[mp.Mountpoint]; ok {
-// 		return fs, nil
-// 	}
-// 	// Если тип файловой системы входит в TSK_FILESYSTEMS, пытаемся создать TSKFileSystem.
-// 	if TSK_FILESYSTEMS[mp.Fstype] {
-// 		tsk, err := NewTSKFileSystem(mp.Device, mp.Mountpoint)
-// 		if err == nil {
-// 			fsm.filesystems[mp.Mountpoint] = tsk
-// 			return tsk, nil
-// 		}
-// 		// При ошибке – переходим к OSFileSystem.
-// 	}
-// 	// Создаём OSFileSystem как запасной вариант.
-// 	osfs := NewOSFileSystem(mp.Mountpoint)
-// 	fsm.filesystems[mp.Mountpoint] = osfs
-// 	return osfs, nil
-// }
-
 // GetPathObject возвращает объект пути, используя метод GetFullPath файловой системы.
 func (fsm *FileSystemManager) GetPathObject(path string) (*PathObject, error) {
 	fs, err := fsm.getFilesystem(path)
@@ -642,63 +616,31 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 	}
 }
 
-// // RegisterSource регистрирует источник артефакта. Если тип источника соответствует
-// // TYPE_INDICATOR_FILE, TYPE_INDICATOR_PATH или FILE_INFO_TYPE, для каждого пути выполняется
-// // подстановка переменных (variables) и добавление шаблона.
-// func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
-// 	supported := false
-// 	if artifactSource.TypeIndicator == TYPE_INDICATOR_FILE ||
-// 		artifactSource.TypeIndicator == TYPE_INDICATOR_PATH ||
-// 		artifactSource.TypeIndicator == FILE_INFO_TYPE {
-
-// 		supported = true
-
-// 		pathsInterface, exists := artifactSource.Attributes["paths"]
-// 		if !exists {
-// 			logger.Log(LevelError, "Нет атрибута 'paths' у источника")
-// 			return false
-// 		}
-// 		pathsSlice, ok := convertToStringSlice(pathsInterface)
-// 		if !ok || len(pathsSlice) == 0 {
-// 			logger.Log(LevelError, "Неверный или пустой список путей в источнике")
-// 			return false
-// 		}
-// 		for _, p := range pathsSlice {
-// 			substituted := variables.Substitute(p)
-// 			// Перебираем ключи, а не значения
-// 			for sp := range substituted {
-// 				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(sp, "*") {
-// 					sp = sp + string(filepath.Separator) + "**-1"
-// 				}
-// 				fsm.AddPattern(artifactDefinition.Name, sp, artifactSource.TypeIndicator)
-// 			}
-// 		}
-
-// 	}
-// 	return supported
-// }
-
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
-	mp, err := fsm.getMountPoint(path)
+	// Приводим путь к единому виду.
+	normalizedPath := filepath.ToSlash(path)
+	// Если файл или директория существуют в ОС, используем ОС‑файловую систему.
+	if _, err := os.Stat(normalizedPath); err == nil {
+		return NewOSFileSystem(normalizedPath), nil
+	}
+	// Если не найдено, попробуем найти точку монтирования.
+	mp, err := fsm.getMountPoint(normalizedPath)
 	if err != nil {
 		return nil, err
 	}
-	if fs, ok := fsm.filesystems[mp.Mountpoint]; ok {
-		return fs, nil
-	}
-	// Приводим тип файловой системы к верхнему регистру для корректного сравнения.
-	if TSK_FILESYSTEMS[strings.ToUpper(mp.Fstype)] {
+	// Если расширение файла указывает на RAW-образ, например .dd, .e01, .img,
+	// то используем TSK‑файловую систему.
+	ext := strings.ToLower(filepath.Ext(normalizedPath))
+	if ext == ".dd" || ext == ".e01" || ext == ".img" {
 		tsk, err := NewTSKFileSystem(mp.Device, mp.Mountpoint)
 		if err == nil {
-			fsm.filesystems[mp.Mountpoint] = tsk
 			return tsk, nil
 		}
-		// При ошибке – переходим к OSFileSystem.
+		// Если создать TSK не удалось, логгируем ошибку и переходим к ОС‑файловой системе.
+		logger.Log(LevelError, fmt.Sprintf("Ошибка создания TSKFileSystem для %s: %v", normalizedPath, err))
 	}
-	// Создаём OSFileSystem как запасной вариант.
-	osfs := NewOSFileSystem(mp.Mountpoint)
-	fsm.filesystems[mp.Mountpoint] = osfs
-	return osfs, nil
+	// В остальных случаях возвращаем ОС‑файловую систему, используя точку монтирования.
+	return NewOSFileSystem(mp.Mountpoint), nil
 }
 
 // RegisterSource регистрирует источник артефакта и добавляет шаблоны.
@@ -722,11 +664,11 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 			return false
 		}
 		for _, p := range pathsSlice {
-			// Сначала заменяем все "\" на "/"
+			// Заменяем все обратные слэши на прямые.
 			p = strings.ReplaceAll(p, "\\", "/")
 			substituted := variables.Substitute(p)
 			for sp := range substituted {
-				// Ещё раз нормализуем sp (на случай, если Substitute не изменил его)
+				// Еще раз нормализуем результат.
 				sp = strings.ReplaceAll(sp, "\\", "/")
 				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(sp, "*") {
 					sp = sp + string(filepath.Separator) + "**-1"
@@ -754,7 +696,6 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 				}
 			}
 		}
-
 	}
 	return supported
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"archive/zip"
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -155,53 +154,74 @@ func (o *Outputs) AddCollectedFileInfo(artifact string, pathObject FilePathObjec
 // AddCollectedFile собирает содержимое файла для указанного артефакта.
 // Если файл не превышает максимально допустимый размер, он добавляется в zip-архив.
 func (o *Outputs) AddCollectedFile(artifact string, pathObject FilePathObject) error {
-	logger.Log(LevelInfo, fmt.Sprintf("Collecting file '%s' for artifact '%s'", pathObject.GetPath(), artifact))
+	filePath := pathObject.GetPath()
+
+	// Проверка существования файла
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		logger.Log(LevelWarning, fmt.Sprintf("File not found: %s", filePath))
+		return nil
+	}
+
+	// Проверка размера
+	if o.maxsize > 0 && pathObject.GetSize() > o.maxsize {
+		logger.Log(LevelWarning,
+			fmt.Sprintf("Skipping large file: %s (%d bytes)",
+				filePath, pathObject.GetSize()))
+		return nil
+	}
+
+	// Создание архива при первом использовании
 	if o.zipWriter == nil {
 		zipPath := filepath.Join(o.dirpath, fmt.Sprintf("%s-files.zip", o.hostname))
 		f, err := os.Create(zipPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create zip: %v", err)
 		}
 		o.zipFile = f
 		o.zipWriter = zip.NewWriter(f)
 	}
-	if o.maxsize == 0 || pathObject.GetSize() <= o.maxsize {
-		filename := normalizeFilepath(pathObject.GetPath())
-		if _, exists := o.addedFiles[filename]; exists {
-			return nil
-		}
-		o.addedFiles[filename] = true
 
-		header := &zip.FileHeader{
-			Name:   filename,
-			Method: zip.Deflate,
-		}
-		writer, err := o.zipWriter.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-		var hash256 hash.Hash
-		if o.sha256 {
-			hash256 = sha256.New()
-		}
-		chunks, err := pathObject.ReadChunks()
-		if err != nil {
-			return err
-		}
-		for _, chunk := range chunks {
-			if _, err := writer.Write(chunk); err != nil {
-				return err
-			}
-			if o.sha256 {
-				hash256.Write(chunk)
-			}
-		}
-		if o.sha256 {
-			logger.Log(LevelInfo, fmt.Sprintf("File '%s' has SHA-256 '%s'", pathObject.GetPath(), hex.EncodeToString(hash256.Sum(nil))))
-		}
-	} else {
-		logger.Log(LevelWarning, fmt.Sprintf("Ignoring file '%s' because of its size", pathObject.GetPath()))
+	// Нормализация пути
+	filename := normalizeFilepath(filePath)
+	if _, exists := o.addedFiles[filename]; exists {
+		return nil
 	}
+
+	// Добавление в архив
+	header := &zip.FileHeader{
+		Name:   filename,
+		Method: zip.Deflate,
+	}
+	writer, err := o.zipWriter.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+
+	// Чтение и запись содержимого
+	chunks, err := pathObject.ReadChunks()
+	if err != nil {
+		return err
+	}
+
+	var hash256 hash.Hash
+	if o.sha256 {
+		hash256 = sha256.New()
+	}
+
+	for _, chunk := range chunks {
+		if _, err := writer.Write(chunk); err != nil {
+			return err
+		}
+		if o.sha256 {
+			hash256.Write(chunk)
+		}
+	}
+
+	o.addedFiles[filename] = true
+	logger.Log(LevelInfo,
+		fmt.Sprintf("Added %s (%d bytes) to archive",
+			filename, pathObject.GetSize()))
+
 	return nil
 }
 
