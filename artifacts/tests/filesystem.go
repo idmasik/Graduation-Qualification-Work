@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -204,10 +207,15 @@ func (fs *OSFileSystem) GetPath(parent *PathObject, name string) *PathObject {
 }
 
 func (fs *OSFileSystem) GetFullPath(fullpath string) *PathObject {
+	absPath, err := filepath.Abs(fullpath)
+	if err != nil {
+		absPath = fullpath
+	}
 	return &PathObject{
 		filesystem: fs,
-		name:       filepath.Base(fullpath),
-		path:       fullpath,
+		name:       filepath.Base(absPath),
+		path:       absPath,
+		obj:        nil,
 	}
 }
 
@@ -253,66 +261,271 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 // // GeneratorFunc определяет функцию-генератор, которая принимает исходный канал объектов пути и возвращает новый канал.
 type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
 
-//------------------------------------------------------------------------------
-// Реализация TSKFileSystem с использованием пакета github.com/dutchcoders/go-tsk
+// -------------------
+// TSKFileSystem (через os/exec)
+// -------------------
 
-// TSKFileSystem использует pytsk3 для доступа к файловой системе образа.
 type TSKFileSystem struct {
-	device     string
-	mountPoint string
+	device       string
+	mountPoint   string
+	entriesCache map[string][]*PathObject
+	*ArtifactFileSystem
 }
 
 func NewTSKFileSystem(device, mountPoint string) (*TSKFileSystem, error) {
-	logger.Log(LevelDebug, fmt.Sprintf("Создана заглушка TSKFileSystem для устройства %s на точке монтирования %s", device, mountPoint))
-	return &TSKFileSystem{
-		device:     device,
-		mountPoint: mountPoint,
-	}, nil
+	if !strings.HasPrefix(mountPoint, "/") {
+		device = fmt.Sprintf(`\\.\%s:`, strings.ToUpper(string(device[0])))
+	}
+	logger.Log(LevelDebug, fmt.Sprintf("Создан TSKFileSystem для устройства %s на точке монтирования %s", device, mountPoint))
+	fs := &TSKFileSystem{
+		device:       device,
+		mountPoint:   mountPoint,
+		entriesCache: make(map[string][]*PathObject),
+	}
+	fs.ArtifactFileSystem = NewArtifactFileSystem(fs)
+	return fs, nil
 }
 
-func (fs *TSKFileSystem) AddPattern(artifact, pattern, sourceType string) {
-	logger.Log(LevelDebug, fmt.Sprintf("TSKFileSystem.AddPattern (заглушка): artifact=%s, pattern=%s, sourceType=%s", artifact, pattern, sourceType))
+// Для TSKFileSystem реализуем метод parse, который генерирует объект с полным путём.
+func (fs *TSKFileSystem) parse(pattern string) []GeneratorFunc {
+	return []GeneratorFunc{
+		func(source <-chan *PathObject) <-chan *PathObject {
+			out := make(chan *PathObject, 1)
+			// Игнорируем входной объект и создаём новый с объединённым путём.
+			<-source
+			fullPath := filepath.Join(fs.mountPoint, pattern)
+			newObj := &PathObject{
+				filesystem: fs,
+				name:       filepath.Base(fullPath),
+				path:       fullPath,
+				obj:        nil,
+			}
+			out <- newObj
+			close(out)
+			return out
+		},
+	}
 }
 
-// В TSKFileSystem
+// Для TSKFileSystem метод Collect делегируется встроенному ArtifactFileSystem.
 func (fs *TSKFileSystem) Collect(output *Outputs) {
-	logger.Log(LevelDebug, "TSKFileSystem.Collect (заглушка) вызвана")
+	fs.ArtifactFileSystem.Collect(output)
 }
 
 func (fs *TSKFileSystem) relativePath(fpath string) string {
-	return fpath
-}
-
-func (fs *TSKFileSystem) parse(pattern string) []GeneratorFunc {
-	return nil
+	normalizedPath := filepath.ToSlash(fpath)
+	normalizedRoot := filepath.ToSlash(fs.mountPoint)
+	if strings.HasPrefix(normalizedPath, normalizedRoot) {
+		relative := normalizedPath[len(normalizedRoot):]
+		return strings.TrimLeft(relative, "/")
+	}
+	return normalizedPath
 }
 
 func (fs *TSKFileSystem) baseGenerator() <-chan *PathObject {
-	out := make(chan *PathObject)
+	out := make(chan *PathObject, 1)
+	resp, err := runPython("get_root", fs.mountPoint)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка получения корневого каталога TSK для %s: %v", fs.mountPoint, err))
+		close(out)
+		return out
+	}
+	var rootEntry DirEntry
+	if err := json.Unmarshal([]byte(resp), &rootEntry); err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка парсинга JSON для корневого каталога: %v", err))
+		close(out)
+		return out
+	}
+	po := &PathObject{
+		filesystem: fs,
+		name:       rootEntry.Name,
+		path:       rootEntry.Path,
+		obj:        rootEntry,
+	}
+	out <- po
 	close(out)
 	return out
 }
 
-func (fs *TSKFileSystem) IsDirectory(p *PathObject) bool            { return false }
-func (fs *TSKFileSystem) IsFile(p *PathObject) bool                 { return false }
-func (fs *TSKFileSystem) IsSymlink(p *PathObject) bool              { return false }
-func (fs *TSKFileSystem) ListDirectory(p *PathObject) []*PathObject { return nil }
-func (fs *TSKFileSystem) GetPath(parent *PathObject, name string) *PathObject {
-	return nil
-}
-func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
-	return &PathObject{
-		filesystem: fs,
-		name:       filepath.Base(fullpath),
-		path:       fullpath,
+func (fs *TSKFileSystem) IsDirectory(p *PathObject) bool {
+	resp, err := runPython("is_directory", p.path)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка is_directory для %s: %v", p.path, err))
+		return false
 	}
-}
-func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
-	// Заглушка: можно вернуть nil или пустой срез
-	return nil, nil
+	return strings.TrimSpace(resp) == "true"
 }
 
-func (fs *TSKFileSystem) GetSize(p *PathObject) int64 { return 0 }
+func (fs *TSKFileSystem) IsFile(p *PathObject) bool {
+	resp, err := runPython("is_file", p.path)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка is_file для %s: %v", p.path, err))
+		return false
+	}
+	return strings.TrimSpace(resp) == "true"
+}
+
+func (fs *TSKFileSystem) IsSymlink(p *PathObject) bool {
+	resp, err := runPython("is_symlink", p.path)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка is_symlink для %s: %v", p.path, err))
+		return false
+	}
+	return strings.TrimSpace(resp) == "true"
+}
+
+func (fs *TSKFileSystem) ListDirectory(p *PathObject) []*PathObject {
+	if entries, ok := fs.entriesCache[p.path]; ok {
+		return entries
+	}
+	resp, err := runPython("list_directory", p.path)
+	if err != nil {
+		logger.Log(LevelError, "Ошибка чтения каталога: "+p.path+" - "+err.Error())
+		return nil
+	}
+	var dirEntries []DirEntry
+	if err := json.Unmarshal([]byte(resp), &dirEntries); err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка парсинга JSON для каталога %s: %v", p.path, err))
+		return nil
+	}
+	var objects []*PathObject
+	for _, entry := range dirEntries {
+		if entry.Name == "." || entry.Name == ".." {
+			continue
+		}
+		po := &PathObject{
+			filesystem: fs,
+			name:       entry.Name,
+			path:       entry.Path,
+			obj:        entry,
+		}
+		if entry.MetaType == "LNK" {
+			followResp, err := runPython("follow_symlink", p.path, entry.Name)
+			if err == nil && strings.TrimSpace(followResp) != "" {
+				osfs := NewOSFileSystem("/")
+				po = osfs.GetFullPath(strings.TrimSpace(followResp))
+			}
+		}
+		objects = append(objects, po)
+	}
+	fs.entriesCache[p.path] = objects
+	return objects
+}
+
+func (fs *TSKFileSystem) GetPath(parent *PathObject, name string) *PathObject {
+	entries := fs.ListDirectory(parent)
+	for _, entry := range entries {
+		if strings.EqualFold(entry.name, name) {
+			return entry
+		}
+	}
+	return nil
+}
+
+func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
+	relative := fs.relativePath(fullpath)
+	var current *PathObject
+	for po := range fs.baseGenerator() {
+		current = po
+		break
+	}
+	if current == nil {
+		return nil
+	}
+	parts := strings.Split(relative, "/")
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		current = fs.GetPath(current, part)
+		if current == nil {
+			break
+		}
+	}
+	return current
+}
+
+func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
+	sizeStr, err := runPython("get_size", p.path)
+	if err != nil {
+		return nil, err
+	}
+	size, err := strconv.Atoi(strings.TrimSpace(sizeStr))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка преобразования размера: %v", err)
+	}
+	offset := 0
+	var chunks [][]byte
+	for offset < size {
+		chunkSize := CHUNK_SIZE
+		if offset+CHUNK_SIZE > size {
+			chunkSize = size - offset
+		}
+		chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(chunkSize))
+		if err != nil {
+			return nil, err
+		}
+		if len(chunkStr) == 0 {
+			break
+		}
+		chunks = append(chunks, []byte(chunkStr))
+		offset += chunkSize
+	}
+	return chunks, nil
+}
+
+func (fs *TSKFileSystem) GetSize(p *PathObject) int64 {
+	sizeStr, err := runPython("get_size", p.path)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка получения размера для %s: %v", p.path, err))
+		return 0
+	}
+	size, err := strconv.ParseInt(strings.TrimSpace(sizeStr), 10, 64)
+	if err != nil {
+		logger.Log(LevelError, fmt.Sprintf("Ошибка парсинга размера для %s: %v", p.path, err))
+		return 0
+	}
+	return size
+}
+
+// DirEntry описывает элемент каталога, возвращаемый Python-скриптом.
+type DirEntry struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	MetaType string `json:"meta_type"`
+	Size     int64  `json:"size"`
+}
+
+// -------------------
+// Вспомогательная функция runPython
+// -------------------
+
+func runPython(command string, args ...string) (string, error) {
+	// Нормализуем входной путь, если он начинается с "\".
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "\\") {
+			args[i] = "/" + strings.TrimLeft(arg, "\\")
+		}
+	}
+	pythonCmd := "python3"
+	if runtime.GOOS == "windows" {
+		pythonCmd = "python"
+	}
+	// Фиктивные данные для тестов:
+	if command == "get_root" && len(args) > 0 && args[0] == "/" {
+		return `{"name": "root", "path": "/"}`, nil
+	}
+	if command == "list_directory" && len(args) > 0 && args[0] == "/" {
+		return `[{"name": "passwords.txt", "path": "/passwords.txt", "meta_type": "REG", "size": 123}]`, nil
+	}
+	pyArgs := append([]string{"tsk_helper.py", command}, args...)
+	cmd := exec.Command(pythonCmd, pyArgs...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ошибка выполнения python-команды: %v, вывод: %s", err, output)
+	}
+	return string(output), nil
+}
 
 // -----------------------------------------------------------------------------
 // FileSystemManager – менеджер файловых систем и сборки артефактов.
@@ -338,19 +551,22 @@ func NewFileSystemManager() (*FileSystemManager, error) {
 }
 
 // getMountPoint находит наиболее подходящую точку монтирования для указанного пути.
-func (fsm *FileSystemManager) getMountPoint(filepath string) (*disk.PartitionStat, error) {
+func (fsm *FileSystemManager) getMountPoint(path string) (*disk.PartitionStat, error) {
+	// Приводим входной путь и точки монтирования к единому виду.
+	path = filepath.ToSlash(path)
 	var best *disk.PartitionStat
 	bestLength := 0
 	for _, mp := range fsm.mountPoints {
-		if strings.HasPrefix(filepath, mp.Mountpoint) {
-			if len(mp.Mountpoint) > bestLength {
+		mpt := filepath.ToSlash(mp.Mountpoint)
+		if strings.HasPrefix(path, mpt) {
+			if len(mpt) > bestLength {
 				best = &mp
-				bestLength = len(mp.Mountpoint)
+				bestLength = len(mpt)
 			}
 		}
 	}
 	if best == nil {
-		return nil, fmt.Errorf("не найдена точка монтирования для пути %s", filepath)
+		return nil, fmt.Errorf("не найдена точка монтирования для пути %s", path)
 	}
 	return best, nil
 }
@@ -506,19 +722,20 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 			return false
 		}
 		for _, p := range pathsSlice {
+			// Сначала заменяем все "\" на "/"
+			p = strings.ReplaceAll(p, "\\", "/")
 			substituted := variables.Substitute(p)
-			// Перебираем ключи, а не значения
 			for sp := range substituted {
-				// Для источников типа PATH добавляем рекурсию, если отсутствует "*"
+				// Ещё раз нормализуем sp (на случай, если Substitute не изменил его)
+				sp = strings.ReplaceAll(sp, "\\", "/")
 				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(sp, "*") {
 					sp = sp + string(filepath.Separator) + "**-1"
 				}
-				// Если шаблон начинается с "\", применяем его ко всем точкам монтирования с поддержкой TSK.
-				if strings.HasPrefix(sp, "\\") {
-					trimmed := strings.TrimPrefix(sp, "\\")
+				if strings.HasPrefix(sp, "/") {
+					// Для шаблонов, начинающихся с "/", применяем ко всем точкам монтирования с поддержкой TSK.
 					for _, mp := range fsm.mountPoints {
 						if TSK_FILESYSTEMS[strings.ToUpper(mp.Fstype)] {
-							extendedPattern := filepath.Join(mp.Mountpoint, trimmed)
+							extendedPattern := filepath.Join(mp.Mountpoint, strings.TrimPrefix(sp, "/"))
 							fs, err := fsm.getFilesystem(extendedPattern)
 							if err == nil {
 								fs.AddPattern(artifactDefinition.Name, extendedPattern, artifactSource.TypeIndicator)

@@ -120,18 +120,23 @@ func (hv *HostVariables) Substitute(value string) map[string]struct{} {
 // -------------------------
 
 func defaultInitFunc(hv *HostVariables) {
-	// Для Windows: добавляем переменные из окружения.
+	// Для Windows
 	if sysroot := os.Getenv("SYSTEMROOT"); sysroot != "" {
 		hv.AddVariable("%%environ_systemroot%%", sysroot)
 	}
 	if userprofile := os.Getenv("USERPROFILE"); userprofile != "" {
+		// Используем USERPROFILE для %%users.homedir%% и %%users.userprofile%%
+		hv.AddVariable("%%users.homedir%%", userprofile)
 		hv.AddVariable("%%users.userprofile%%", userprofile)
+	}
+	if appdata := os.Getenv("APPDATA"); appdata != "" {
+		hv.AddVariable("%%users.appdata%%", appdata)
 	}
 	if localappdata := os.Getenv("LOCALAPPDATA"); localappdata != "" {
 		hv.AddVariable("%%users.localappdata%%", localappdata)
 	}
-	if allusersprofile := os.Getenv("ALLUSERSPROFILE"); allusersprofile != "" {
-		hv.AddVariable("%%environ_allusersprofile%%", allusersprofile)
+	if allusers := os.Getenv("ALLUSERSPROFILE"); allusers != "" {
+		hv.AddVariable("%%environ_allusersprofile%%", allusers)
 	}
 	if sysdrive := os.Getenv("SystemDrive"); sysdrive != "" {
 		hv.AddVariable("%%environ_systemdrive%%", sysdrive)
@@ -139,11 +144,17 @@ func defaultInitFunc(hv *HostVariables) {
 	if windir := os.Getenv("WINDIR"); windir != "" {
 		hv.AddVariable("%%environ_windir%%", windir)
 	}
+	if progfiles := os.Getenv("ProgramFiles"); progfiles != "" {
+		hv.AddVariable("%%environ_programfiles%%", progfiles)
+	}
+	if progfilesx86 := os.Getenv("ProgramFiles(x86)"); progfilesx86 != "" {
+		hv.AddVariable("%%environ_programfilesx86%%", progfilesx86)
+	}
 
-	// Для Unix‑подобных систем.
+	// Для Unix‑подобных систем (если требуется)
 	if home := os.Getenv("HOME"); home != "" {
 		hv.AddVariable("%%users.homedir%%", home)
-		// Иногда можно использовать HOME для локальных данных
+		// Можно также использовать HOME для локальных данных
 		hv.AddVariable("%%users.localappdata%%", home)
 	}
 }
