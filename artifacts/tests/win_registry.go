@@ -363,25 +363,36 @@ func (rc *RegistryCollector) add_value(artifact, key, value string) {
 }
 
 // Collect проходит по всем зарегистрированным ключам и значениям и передаёт данные в output.
-func (rc *RegistryCollector) Collect(output Outputs) {
+func (rc *RegistryCollector) Collect(output *Outputs) {
 	// Обработка ключей
 	for _, keyEntry := range rc.keys {
-		reader := NewRegistryReader(keyEntry["hive"], strings.ToLower(keyEntry["key"]))
+		reader := NewRegistryReader(keyEntry["hive"], keyEntry["key"])
 		for po := range reader.keysToCollect() {
 			for triple := range reader.GetKeyValues(po) {
 				name, value, typ := triple[0].(string), triple[1], triple[2]
-				output.AddCollectedRegistryValue(keyEntry["artifact"], po.path, name, value, fmt.Sprintf("%v", typ))
+				output.AddCollectedRegistryValue(
+					keyEntry["artifact"],
+					po.path,
+					name,
+					value,
+					fmt.Sprintf("%v", typ))
 			}
 		}
 		reader.Close()
 	}
-	// Обработка конкретных значений
+
+	// Обработка значений
 	for _, keyValue := range rc.values {
-		reader := NewRegistryReader(keyValue["hive"], strings.ToLower(keyValue["key"]))
+		reader := NewRegistryReader(keyValue["hive"], keyValue["key"])
 		for po := range reader.keysToCollect() {
 			regVal := reader.GetKeyValue(po, keyValue["value"])
 			if regVal != nil {
-				output.AddCollectedRegistryValue(keyValue["artifact"], po.path, keyValue["value"], regVal["value"], fmt.Sprintf("%v", regVal["type"]))
+				output.AddCollectedRegistryValue(
+					keyValue["artifact"],
+					po.path,
+					keyValue["value"],
+					regVal["value"],
+					fmt.Sprintf("%v", regVal["type"]))
 			}
 		}
 		reader.Close()

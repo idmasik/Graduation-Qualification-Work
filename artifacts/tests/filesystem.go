@@ -534,18 +534,20 @@ func runPython(command string, args ...string) (string, error) {
 // FileSystemManager управляет набором файловых систем, найденных по точкам монтирования,
 // и реализует интерфейс AbstractCollector.
 type FileSystemManager struct {
-	filesystems map[string]FileSystem // Ключ – точка монтирования
-	mountPoints []disk.PartitionStat  // Список точек монтирования
+	filesystems map[string]FileSystem
+	variables   *HostVariables
+	mountPoints []disk.PartitionStat
 }
 
-// NewFileSystemManager создаёт новый менеджер, получая список точек монтирования с помощью gopsutil.
-func NewFileSystemManager() (*FileSystemManager, error) {
+func NewFileSystemManager(variables *HostVariables) (*FileSystemManager, error) {
 	partitions, err := disk.Partitions(true)
 	if err != nil {
 		return nil, err
 	}
+
 	return &FileSystemManager{
 		filesystems: make(map[string]FileSystem),
+		variables:   variables,
 		mountPoints: partitions,
 	}, nil
 }
@@ -615,32 +617,34 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 		fs.Collect(output)
 	}
 }
-
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
-	// Приводим путь к единому виду.
-	normalizedPath := filepath.ToSlash(path)
-	// Если файл или директория существуют в ОС, используем ОС‑файловую систему.
-	if _, err := os.Stat(normalizedPath); err == nil {
-		return NewOSFileSystem(normalizedPath), nil
+	// Resolve variables in path
+	resolvedPaths := fsm.variables.Substitute(path)
+	if len(resolvedPaths) == 0 {
+		return nil, fmt.Errorf("path resolution failed for: %s", path)
 	}
-	// Если не найдено, попробуем найти точку монтирования.
-	mp, err := fsm.getMountPoint(normalizedPath)
-	if err != nil {
-		return nil, err
+
+	// Get first resolved path
+	var resolvedPath string
+	for p := range resolvedPaths {
+		resolvedPath = p
+		break
 	}
-	// Если расширение файла указывает на RAW-образ, например .dd, .e01, .img,
-	// то используем TSK‑файловую систему.
-	ext := strings.ToLower(filepath.Ext(normalizedPath))
-	if ext == ".dd" || ext == ".e01" || ext == ".img" {
-		tsk, err := NewTSKFileSystem(mp.Device, mp.Mountpoint)
-		if err == nil {
-			return tsk, nil
-		}
-		// Если создать TSK не удалось, логгируем ошибку и переходим к ОС‑файловой системе.
-		logger.Log(LevelError, fmt.Sprintf("Ошибка создания TSKFileSystem для %s: %v", normalizedPath, err))
+
+	// Get volume name
+	volume := filepath.VolumeName(resolvedPath)
+	if volume == "" {
+		volume = filepath.VolumeName(filepath.Clean(resolvedPath))
 	}
-	// В остальных случаях возвращаем ОС‑файловую систему, используя точку монтирования.
-	return NewOSFileSystem(mp.Mountpoint), nil
+
+	if fs, exists := fsm.filesystems[volume]; exists {
+		return fs, nil
+	}
+
+	// Create new filesystem for volume
+	osfs := NewOSFileSystem(volume + string(filepath.Separator))
+	fsm.filesystems[volume] = osfs
+	return osfs, nil
 }
 
 // RegisterSource регистрирует источник артефакта и добавляет шаблоны.

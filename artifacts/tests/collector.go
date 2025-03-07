@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 // AbstractCollector задаёт интерфейс для сборщиков артефактов.
@@ -29,30 +30,26 @@ type Collector struct {
 // при этом переменные хоста инициализируются независимо от платформы.
 // NewCollector создаёт новый Collector для указанной платформы с инициализированными переменными.
 func NewCollector(platform string, collectors []AbstractCollector) *Collector {
-	// Инициализируем переменные хоста независимо от платформы.
-	hv := NewHostVariables(defaultInitFunc)
+	hv := NewHostVariables(windowsInitFunc)
 
-	var defaultCollectors []AbstractCollector
-
-	// Инициализация FileSystemManager
-	fsManager, err := NewFileSystemManager()
+	// Initialize required collectors
+	fsManager, err := NewFileSystemManager(hv)
 	if err != nil {
-		logger.Log(LevelError, fmt.Sprintf("Ошибка создания FileSystemManager: %v", err))
-	} else {
-		defaultCollectors = append(defaultCollectors, fsManager)
+		logger.Log(LevelCritical, fmt.Sprintf("Failed to create FS manager: %v", err))
+		os.Exit(1)
 	}
 
-	// Инициализация CommandExecutor
-	cmdExecutor := NewCommandExecutor()
-	defaultCollectors = append(defaultCollectors, cmdExecutor)
-
-	// Объединяем переданные коллектора с обязательными
-	allCollectors := defaultCollectors
+	defaultCollectors := []AbstractCollector{
+		fsManager,
+		NewCommandExecutor(),
+		NewRegistryCollector(),
+		NewWMIExecutor(),
+	}
 
 	return &Collector{
 		platform:   platform,
 		variables:  hv,
-		collectors: allCollectors,
+		collectors: defaultCollectors,
 		sources:    0,
 	}
 }

@@ -40,6 +40,40 @@ type WMIExecutor struct {
 	queries []WMIQuery
 }
 
+func NewWMIExecutor() *WMIExecutor {
+	return &WMIExecutor{
+		queries: make([]WMIQuery, 0),
+	}
+}
+
+func (w *WMIExecutor) Collect(output *Outputs) {
+	for _, q := range w.queries {
+		result, err := wmiQuery(q.Query, q.BaseObject)
+		if err != nil {
+			logger.Log(LevelWarning, fmt.Sprintf("WMI query failed: %s", q.Query))
+			continue
+		}
+		output.AddCollectedWMI(q.Artifact, q.Query, result)
+	}
+}
+
+// func (w *WMIExecutor) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
+//     if artifactSource.TypeIndicator == TYPE_INDICATOR_WMI_QUERY {
+//         if query, ok := artifactSource.Attributes["query"].(string); ok {
+//             resolvedQueries := variables.Substitute(query)
+//             for q := range resolvedQueries {
+//                 w.queries = append(w.queries, WMIQuery{
+//                     Artifact:   artifactDefinition.Name,
+//                     Query:      q,
+//                     BaseObject: artifactSource.Attributes["base_object"].(string),
+//                 })
+//             }
+//             return true
+//         }
+//     }
+//     return false
+// }
+
 // addQuery добавляет новый WMI-запрос в список.
 func (w *WMIExecutor) addQuery(artifact, query, baseObject string) {
 	w.queries = append(w.queries, WMIQuery{
@@ -47,18 +81,6 @@ func (w *WMIExecutor) addQuery(artifact, query, baseObject string) {
 		Query:      query,
 		BaseObject: baseObject,
 	})
-}
-
-// Collect выполняет все зарегистрированные WMI-запросы и сохраняет результаты.
-func (w *WMIExecutor) Collect(output *Outputs) {
-	for _, q := range w.queries {
-		result, err := wmiQuery(q.Query, q.BaseObject)
-		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("Error while retrieving results for WMI Query '%s'", q.Query))
-			result = ""
-		}
-		output.AddCollectedWMI(q.Artifact, q.Query, result)
-	}
 }
 
 // RegisterSource пытается зарегистрировать источник данных для артефакта.
