@@ -617,6 +617,8 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 		fs.Collect(output)
 	}
 }
+
+// ТУТ ОБЯЗАТЕЛЬНО НАДО ДОБАВИТЬ ВЕТКУ РЕАЛИЗАЦИИ TSK в зависимости от целевой системы
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	// Resolve variables in path
 	resolvedPaths := fsm.variables.Substitute(path)
