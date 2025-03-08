@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/user"
 	"strings"
 
 	"golang.org/x/sys/windows/registry"
@@ -87,32 +88,32 @@ func getUserProfiles() ([]string, error) {
 }
 
 func windowsInitFunc(hv *HostVariables) {
-	// Existing variables
-	systemroot := os.Getenv("SystemRoot")
-	hv.AddVariable("%systemroot%", systemroot)
-	hv.AddVariable("%%environ_systemroot%%", systemroot)
-
-	// New variables
-	programdata := os.Getenv("ProgramData")
-	hv.AddVariable("%%environ_programdata%%", programdata)
-
-	temp := os.Getenv("TEMP")
-	hv.AddVariable("%%users.temp%%", temp)
-
-	// Get user SIDs
-	users, err := getLocalUsers()
-	if err == nil {
-		var sids []string
-		for _, user := range users {
-			sids = append(sids, user.SID)
-		}
-		hv.AddVariable("%%users.sid%%", strings.Join(sids, ";"))
-	}
-
-	// Additional environment variables
-	hv.AddVariable("%%environ_allusersprofile%%", os.Getenv("ALLUSERSPROFILE"))
-	hv.AddVariable("%%users.localappdata%%", os.Getenv("LOCALAPPDATA"))
+	// Основные переменные
 	hv.AddVariable("%%users.appdata%%", os.Getenv("APPDATA"))
+	hv.AddVariable("%%users.localappdata%%", os.Getenv("LOCALAPPDATA"))
+	hv.AddVariable("%%users.homedir%%", os.Getenv("USERPROFILE"))
+	hv.AddVariable("%%environ_systemroot%%", os.Getenv("SystemRoot"))
+	hv.AddVariable("%%environ_allusersprofile%%", os.Getenv("ALLUSERSPROFILE"))
+	hv.AddVariable("%%users.temp%%", os.Getenv("TEMP"))
+	hv.AddVariable("%%environ_programdata%%", os.Getenv("ProgramData"))
+	hv.AddVariable("%%users.userprofile%%", os.Getenv("USERPROFILE"))
+
+	// Системные пути
+	hv.AddVariable("%%environ_systemdrive%%", os.Getenv("SystemDrive"))           // Пример: C:
+	hv.AddVariable("%%environ_allusersappdata%%", os.Getenv("ALLUSERSPROFILE"))   // Пример: C:\ProgramData
+	hv.AddVariable("%%environ_windir%%", os.Getenv("SystemRoot"))                 // Пример: C:\Windows
+	hv.AddVariable("%%environ_programfiles%%", os.Getenv("ProgramFiles"))         // Пример: C:\Program Files
+	hv.AddVariable("%%environ_programfilesx86%%", os.Getenv("ProgramFiles(x86)")) // Пример: C:\Program Files (x86)
+
+	// Дополнительные переменные
+	hv.AddVariable("%%public%%", os.Getenv("PUBLIC"))
+	hv.AddVariable("%%comspec%%", os.Getenv("ComSpec"))
+
+	// Информация о пользователе
+	if user, err := user.Current(); err == nil {
+		hv.AddVariable("%%users.sid%%", user.Uid)
+		hv.AddVariable("%%users.username%%", user.Username)
+	}
 }
 
 // NewWindowsHostVariables создаёт и инициализирует HostVariables для Windows,
