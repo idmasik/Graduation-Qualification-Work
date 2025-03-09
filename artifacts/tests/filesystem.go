@@ -180,15 +180,28 @@ func (fs *OSFileSystem) IsSymlink(p *PathObject) bool {
 	return err == nil && (info.Mode()&os.ModeSymlink != 0)
 }
 
+// filesystem.go
+// filesystem.go
 func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
 	var objects []*PathObject
+
 	entries, err := os.ReadDir(p.path)
 	if err != nil {
-		logger.Log(LevelError, "Error reading directory: "+p.path)
-		return objects
+		if os.IsPermission(err) {
+			logger.Log(LevelWarning, fmt.Sprintf("Skipping directory due to permissions: %s", p.path))
+			return nil
+		}
+		logger.Log(LevelError, fmt.Sprintf("Error reading directory: %s - %v", p.path, err))
+		return nil
 	}
 
 	for _, entry := range entries {
+		// Пропускаем системные файлы Windows
+		if strings.HasPrefix(entry.Name(), "~$") ||
+			strings.HasPrefix(entry.Name(), "$") && entry.Name() != "$MFT" {
+			continue
+		}
+
 		objects = append(objects, &PathObject{
 			filesystem: fs,
 			name:       entry.Name(),
@@ -223,7 +236,9 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	if !fs.IsFile(p) {
 		return nil, nil
 	}
-
+	if strings.HasPrefix(p.name, "$MFT") {
+		return fs.readSystemFile(p.path)
+	}
 	file, err := os.Open(p.path)
 	if err != nil {
 		return nil, err
@@ -246,6 +261,7 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 			}
 			return nil, err
 		}
+
 	}
 	return chunks, nil
 }
@@ -256,6 +272,38 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 		return 0
 	}
 	return info.Size()
+}
+
+func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
+	file, err := os.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		if os.IsPermission(err) {
+			logger.Log(LevelWarning, fmt.Sprintf("Admin rights required for: %s", path))
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer file.Close()
+
+	// Чтение с использованием низкоуровневого API
+	var chunks [][]byte
+	buf := make([]byte, CHUNK_SIZE)
+
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, buf[:n])
+			chunks = append(chunks, chunk)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return chunks, nil
 }
 
 // // GeneratorFunc определяет функцию-генератор, которая принимает исходный канал объектов пути и возвращает новый канал.

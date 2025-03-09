@@ -93,6 +93,7 @@ func windowsInitFunc(hv *HostVariables) {
 	hv.AddVariable("%%users.localappdata%%", os.Getenv("LOCALAPPDATA"))
 	hv.AddVariable("%%users.homedir%%", os.Getenv("USERPROFILE"))
 	hv.AddVariable("%%environ_systemroot%%", os.Getenv("SystemRoot"))
+	hv.AddVariable("%%environ_systemroot%%", os.Getenv("SYSTEMROOT"))
 	hv.AddVariable("%%environ_allusersprofile%%", os.Getenv("ALLUSERSPROFILE"))
 	hv.AddVariable("%%users.temp%%", os.Getenv("TEMP"))
 	hv.AddVariable("%%environ_programdata%%", os.Getenv("ProgramData"))

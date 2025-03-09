@@ -40,8 +40,8 @@ func NewCollector(platform string, collectors []AbstractCollector) *Collector {
 	}
 
 	defaultCollectors := []AbstractCollector{
-		fsManager,
 		NewCommandExecutor(),
+		fsManager,
 		NewRegistryCollector(),
 		NewWMIExecutor(),
 	}

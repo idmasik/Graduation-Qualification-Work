@@ -282,9 +282,133 @@ type SourceTypeFactory struct {
 }
 
 func NewSourceTypeFactory() *SourceTypeFactory {
-	return &SourceTypeFactory{
+	factory := &SourceTypeFactory{
 		sourceTypeConstructors: make(map[string]func(map[string]interface{}) (SourceType, error)),
 	}
+
+	// Регистрация всех типов источников
+	factory.RegisterSourceType(TYPE_INDICATOR_ARTIFACT_GROUP, func(attrs map[string]interface{}) (SourceType, error) {
+		names, ok := attrs["names"].([]interface{})
+		if !ok {
+			return nil, errors.New("invalid names for artifact group")
+		}
+
+		strNames := make([]string, len(names))
+		for i, n := range names {
+			strNames[i], ok = n.(string)
+			if !ok {
+				return nil, errors.New("non-string value in names")
+			}
+		}
+		return NewArtifactGroupSourceType(strNames)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_COMMAND, func(attrs map[string]interface{}) (SourceType, error) {
+		cmd, ok1 := attrs["cmd"].(string)
+		argsInterface, ok2 := attrs["args"].([]interface{})
+		if !ok1 || !ok2 {
+			return nil, errors.New("invalid command attributes")
+		}
+
+		args := make([]string, len(argsInterface))
+		for i, a := range argsInterface {
+			// Исправленная часть с объявлением ok
+			arg, ok := a.(string)
+			if !ok {
+				return nil, errors.New("non-string argument in command")
+			}
+			args[i] = arg
+		}
+		return NewCommandSourceType(cmd, args)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_FILE, func(attrs map[string]interface{}) (SourceType, error) {
+		pathsInterface, ok := attrs["paths"].([]interface{})
+		if !ok {
+			return nil, errors.New("invalid paths for file source")
+		}
+
+		paths := make([]string, len(pathsInterface))
+		for i, p := range pathsInterface {
+			paths[i], ok = p.(string)
+			if !ok {
+				return nil, errors.New("non-string path in file source")
+			}
+		}
+
+		separator, _ := attrs["separator"].(string)
+		return NewFileSourceType(paths, separator)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_PATH, func(attrs map[string]interface{}) (SourceType, error) {
+		pathsInterface, ok := attrs["paths"].([]interface{})
+		if !ok {
+			return nil, errors.New("invalid paths for path source")
+		}
+
+		paths := make([]string, len(pathsInterface))
+		for i, p := range pathsInterface {
+			paths[i], ok = p.(string)
+			if !ok {
+				return nil, errors.New("non-string path in path source")
+			}
+		}
+
+		separator, _ := attrs["separator"].(string)
+		return NewPathSourceType(paths, separator)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_WINDOWS_REGISTRY_KEY, func(attrs map[string]interface{}) (SourceType, error) {
+		keysInterface, ok := attrs["keys"].([]interface{})
+		if !ok {
+			return nil, errors.New("invalid keys for registry key source")
+		}
+
+		keys := make([]string, len(keysInterface))
+		for i, k := range keysInterface {
+			keys[i], ok = k.(string)
+			if !ok {
+				return nil, errors.New("non-string key in registry key source")
+			}
+		}
+		return NewWindowsRegistryKeySourceType(keys)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_WINDOWS_REGISTRY_VALUE, func(attrs map[string]interface{}) (SourceType, error) {
+		pairsInterface, ok := attrs["key_value_pairs"].([]interface{})
+		if !ok {
+			return nil, errors.New("invalid key-value pairs for registry value source")
+		}
+
+		pairs := make([]map[string]string, len(pairsInterface))
+		for i, p := range pairsInterface {
+			pairMap, ok := p.(map[string]interface{})
+			if !ok {
+				return nil, errors.New("invalid pair format")
+			}
+
+			pair := make(map[string]string)
+			for k, v := range pairMap {
+				if strVal, ok := v.(string); ok {
+					pair[k] = strVal
+				}
+			}
+			pairs[i] = pair
+		}
+		return NewWindowsRegistryValueSourceType(pairs)
+	})
+
+	factory.RegisterSourceType(TYPE_INDICATOR_WMI_QUERY, func(attrs map[string]interface{}) (SourceType, error) {
+		query, ok := attrs["query"].(string)
+		if !ok {
+			return nil, errors.New("missing query in WMI source")
+		}
+
+		baseObject, _ := attrs["base_object"].(string)
+		return NewWMIQuerySourceType(baseObject, query)
+	})
+
+	return factory
 }
 
 // Регистрирует новый тип источника в фабрике.

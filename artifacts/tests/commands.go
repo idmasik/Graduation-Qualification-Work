@@ -32,7 +32,14 @@ func (c *CommandExecutor) AddCommand(artifact, cmd string, args []string) {
 }
 
 func (c *CommandExecutor) Collect(output *Outputs) {
+	if len(c.commands) == 0 {
+		logger.Log(LevelDebug, "No commands to execute")
+		return
+	}
+
+	logger.Log(LevelInfo, fmt.Sprintf("Executing %d commands...", len(c.commands)))
 	for _, cmd := range c.commands {
+		logger.Log(LevelDebug, fmt.Sprintf("Executing: %s %v", cmd.Cmd, cmd.Args))
 		fullCmd := append([]string{cmd.Cmd}, cmd.Args...)
 		fullCmdStr := strings.Join(fullCmd, " ")
 
