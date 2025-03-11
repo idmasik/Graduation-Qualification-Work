@@ -68,8 +68,21 @@ func (c *CommandExecutor) Collect(output *Outputs) {
 func (c *CommandExecutor) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
 	if artifactSource.TypeIndicator == TYPE_INDICATOR_COMMAND {
 		cmd, ok1 := artifactSource.Attributes["cmd"].(string)
-		args, ok2 := artifactSource.Attributes["args"].([]string)
-		if ok1 && ok2 {
+		var args []string
+		switch v := artifactSource.Attributes["args"].(type) {
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					args = append(args, s)
+				}
+			}
+		case []string:
+			args = v
+		case string:
+			// Если аргументы передаются как строка, разделяем по пробелам
+			args = strings.Fields(v)
+		}
+		if ok1 && len(args) > 0 {
 			c.AddCommand(artifactDefinition.Name, cmd, args)
 			return true
 		}
