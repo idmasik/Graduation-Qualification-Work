@@ -255,6 +255,12 @@ func contains(slice []string, item string) bool {
 // ─── Основная функция ─────────────────────────────────────────────────────────
 
 func main() {
+	// Включаем привилегию SeBackupPrivilege.
+	if err := enableBackupPrivilege(); err != nil {
+		logger.Log(LevelWarning, fmt.Sprintf("Не удалось включить привилегию резервного копирования: %v", err))
+		// Обратите внимание: для корректного доступа к защищённым файлам может потребоваться запуск от SYSTEM.
+	}
+
 	config := parseArgs()
 	fmt.Printf("Config: %#v\n", config)
 
@@ -266,7 +272,6 @@ func main() {
 
 	logger.Log(LevelProgress, "Загрузка артефактов ...")
 
-	// Инициализируем объект для вывода результатов.
 	output, err := NewOutputs(config.Output, config.MaxSize, config.SHA256)
 	if err != nil {
 		logger.Log(LevelCritical, fmt.Sprintf("Не удалось инициализировать вывод: %v", err))

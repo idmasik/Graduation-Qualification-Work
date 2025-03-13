@@ -275,20 +275,43 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 }
 
 func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
-	file, err := os.OpenFile(path, os.O_RDONLY, 0)
-	if err != nil {
-		if os.IsPermission(err) {
-			logger.Log(LevelWarning, fmt.Sprintf("Admin rights required for: %s", path))
-			return nil, nil
+	// Если файл является системным (например, начинается с "$"), пробуем использовать теневую копию
+	if isSystemFile(path) {
+		volume := "C:" // предположим, что защищённые файлы находятся на томе C:
+		shadowDrive, err := createShadowCopy(volume)
+		if err != nil {
+			logger.Log(LevelWarning, fmt.Sprintf("VSS: не удалось создать теневую копию для %s: %v", volume, err))
+			// Если не удалось создать теневую копию, можно попробовать BackupRead (если он реализован)
+			data, err := backupReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			return splitIntoChunks(data), nil
 		}
+
+		shadowPath := getShadowCopyPath(path, volume, shadowDrive)
+		logger.Log(LevelInfo, fmt.Sprintf("Используем теневую копию: оригинальный путь '%s' -> '%s'", path, shadowPath))
+		data, err := readFileFromPath(shadowPath)
+		if err != nil {
+			logger.Log(LevelWarning, fmt.Sprintf("Не удалось прочитать файл из теневой копии %s: %v", shadowPath, err))
+			// Если не удалось, можно попробовать BackupRead как запасной вариант
+			data, err = backupReadFile(path)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return splitIntoChunks(data), nil
+	}
+
+	// Для остальных файлов используем стандартное чтение
+	file, err := os.Open(path)
+	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	// Чтение с использованием низкоуровневого API
 	var chunks [][]byte
 	buf := make([]byte, CHUNK_SIZE)
-
 	for {
 		n, err := file.Read(buf)
 		if n > 0 {
@@ -296,14 +319,51 @@ func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
 			copy(chunk, buf[:n])
 			chunks = append(chunks, chunk)
 		}
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return nil, err
 		}
 	}
 	return chunks, nil
+}
+
+// isSystemFile возвращает true, если базовое имя файла начинается с '$'
+func isSystemFile(path string) bool {
+	base := filepath.Base(path)
+	return len(base) > 0 && base[0] == '$'
+}
+
+// readFileFromPath читает весь файл по указанному пути.
+func readFileFromPath(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(file)
+}
+
+// splitIntoChunks разбивает данные на чанки фиксированного размера.
+func splitIntoChunks(data []byte) [][]byte {
+	var chunks [][]byte
+	for i := 0; i < len(data); i += CHUNK_SIZE {
+		end := i + CHUNK_SIZE
+		if end > len(data) {
+			end = len(data)
+		}
+		chunks = append(chunks, data[i:end])
+	}
+	return chunks
+}
+
+// hasSystemSignature возвращает true для файлов, требующих особого доступа,
+// например, если имя файла начинается с "$" (MFT, $MFTMirr, файлы реестра и т.п.).
+func hasSystemSignature(path string) bool {
+	// Простой пример: если базовое имя начинается с "$"
+	base := filepath.Base(path)
+	return len(base) > 0 && base[0] == '$'
 }
 
 // // GeneratorFunc определяет функцию-генератор, которая принимает исходный канал объектов пути и возвращает новый канал.
@@ -633,9 +693,13 @@ func (fsm *FileSystemManager) GetPathObject(path string) (*PathObject, error) {
 // AddPattern регистрирует шаблон для указанного артефакта.
 // Если шаблон начинается с "\", он применяется ко всем точкам монтирования, для которых тип ФС поддерживается.
 func (fsm *FileSystemManager) AddPattern(artifact, pattern, sourceType string) {
-	pattern = filepath.Clean(pattern)
-	if strings.HasPrefix(pattern, "\\") {
-		trimmed := strings.TrimPrefix(pattern, "\\")
+	if runtime.GOOS == "windows" && !isValidWindowsPattern(pattern) {
+		//logger.Log(LevelDebug, fmt.Sprintf("Пропускаем невалидный Windows-паттерн для артефакта '%s': %s", artifact, pattern))
+		return
+	}
+	// Если шаблон начинается с "\", он применяется ко всем точкам монтирования с поддержкой TSK.
+	if len(pattern) > 0 && pattern[0] == '\\' {
+		trimmed := pattern[1:]
 		for _, mp := range fsm.mountPoints {
 			if TSK_FILESYSTEMS[mp.Fstype] {
 				extendedPattern := filepath.Join(mp.Mountpoint, trimmed)
@@ -718,17 +782,23 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 			return false
 		}
 		for _, p := range pathsSlice {
-			// Заменяем все обратные слэши на прямые.
+			// Приводим обратные слэши к прямым для единообразия
 			p = strings.ReplaceAll(p, "\\", "/")
 			substituted := variables.Substitute(p)
 			for sp := range substituted {
-				// Еще раз нормализуем результат.
+				// Ещё раз нормализуем результат: заменяем обратные слэши на прямые
 				sp = strings.ReplaceAll(sp, "\\", "/")
+				// Если тип источника PATH и путь не оканчивается на "*", добавляем рекурсию
 				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(sp, "*") {
 					sp = sp + string(filepath.Separator) + "**-1"
 				}
+				// Если программа работает на Windows, проверяем корректность пути
+				if runtime.GOOS == "windows" && !isValidWindowsPattern(sp) {
+					//logger.Log(LevelDebug, fmt.Sprintf("Пропускаем невалидный Windows-паттерн для артефакта '%s': %s", artifactDefinition.Name, sp))
+					continue
+				}
+				// Если путь начинается с "/", обрабатываем его как шаблон для TSK
 				if strings.HasPrefix(sp, "/") {
-					// Для шаблонов, начинающихся с "/", применяем ко всем точкам монтирования с поддержкой TSK.
 					for _, mp := range fsm.mountPoints {
 						if TSK_FILESYSTEMS[strings.ToUpper(mp.Fstype)] {
 							extendedPattern := filepath.Join(mp.Mountpoint, strings.TrimPrefix(sp, "/"))
@@ -752,4 +822,15 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 		}
 	}
 	return supported
+}
+
+// isValidWindowsPattern возвращает true, если для Windows заданный путь является корректным абсолютным путём.
+// На Windows корректный путь должен начинаться с буквы диска, двоеточия и слэша (например, "C:\" или "D:/").
+// Если программа работает не на Windows, возвращается true.
+func isValidWindowsPattern(pattern string) bool {
+	if runtime.GOOS != "windows" {
+		return true
+	}
+	matched, _ := regexp.MatchString(`^[A-Za-z]:[\\/].+`, pattern)
+	return matched
 }
