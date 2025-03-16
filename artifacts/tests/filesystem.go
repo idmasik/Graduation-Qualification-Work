@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -275,35 +276,7 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 }
 
 func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
-	// Если файл является системным (например, начинается с "$"), пробуем использовать теневую копию
-	if isSystemFile(path) {
-		volume := "C:" // предположим, что защищённые файлы находятся на томе C:
-		shadowDrive, err := createShadowCopy(volume)
-		if err != nil {
-			logger.Log(LevelWarning, fmt.Sprintf("VSS: не удалось создать теневую копию для %s: %v", volume, err))
-			// Если не удалось создать теневую копию, можно попробовать BackupRead (если он реализован)
-			data, err := backupReadFile(path)
-			if err != nil {
-				return nil, err
-			}
-			return splitIntoChunks(data), nil
-		}
-
-		shadowPath := getShadowCopyPath(path, volume, shadowDrive)
-		logger.Log(LevelInfo, fmt.Sprintf("Используем теневую копию: оригинальный путь '%s' -> '%s'", path, shadowPath))
-		data, err := readFileFromPath(shadowPath)
-		if err != nil {
-			logger.Log(LevelWarning, fmt.Sprintf("Не удалось прочитать файл из теневой копии %s: %v", shadowPath, err))
-			// Если не удалось, можно попробовать BackupRead как запасной вариант
-			data, err = backupReadFile(path)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return splitIntoChunks(data), nil
-	}
-
-	// Для остальных файлов используем стандартное чтение
+	// Открываем файл напрямую через os.Open в режиме чтения
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -315,6 +288,7 @@ func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
 	for {
 		n, err := file.Read(buf)
 		if n > 0 {
+			// Создаем копию прочитанного среза, чтобы сохранить данные
 			chunk := make([]byte, n)
 			copy(chunk, buf[:n])
 			chunks = append(chunks, chunk)
@@ -373,6 +347,14 @@ type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
 // TSKFileSystem (через os/exec)
 // -------------------
 
+// DirEntry описывает элемент каталога, возвращаемый Python‑скриптом.
+type DirEntry struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	MetaType string `json:"meta_type"`
+	Size     int64  `json:"size"`
+}
+
 type TSKFileSystem struct {
 	device       string
 	mountPoint   string
@@ -381,6 +363,7 @@ type TSKFileSystem struct {
 }
 
 func NewTSKFileSystem(device, mountPoint string) (*TSKFileSystem, error) {
+	// Для Windows: если mountPoint не начинается с "/", преобразуем device
 	if !strings.HasPrefix(mountPoint, "/") {
 		device = fmt.Sprintf(`\\.\%s:`, strings.ToUpper(string(device[0])))
 	}
@@ -394,19 +377,18 @@ func NewTSKFileSystem(device, mountPoint string) (*TSKFileSystem, error) {
 	return fs, nil
 }
 
-// Для TSKFileSystem реализуем метод parse, который генерирует объект с полным путём.
+// parse генерирует объект пути для заданного паттерна.
 func (fs *TSKFileSystem) parse(pattern string) []GeneratorFunc {
 	return []GeneratorFunc{
 		func(source <-chan *PathObject) <-chan *PathObject {
 			out := make(chan *PathObject, 1)
-			// Игнорируем входной объект и создаём новый с объединённым путём.
 			<-source
 			fullPath := filepath.Join(fs.mountPoint, pattern)
 			newObj := &PathObject{
 				filesystem: fs,
 				name:       filepath.Base(fullPath),
 				path:       fullPath,
-				obj:        nil,
+				obj:        nil, // Можно сохранить дополнительные данные, если потребуется
 			}
 			out <- newObj
 			close(out)
@@ -415,7 +397,6 @@ func (fs *TSKFileSystem) parse(pattern string) []GeneratorFunc {
 	}
 }
 
-// Для TSKFileSystem метод Collect делегируется встроенному ArtifactFileSystem.
 func (fs *TSKFileSystem) Collect(output *Outputs) {
 	fs.ArtifactFileSystem.Collect(output)
 }
@@ -432,6 +413,7 @@ func (fs *TSKFileSystem) relativePath(fpath string) string {
 
 func (fs *TSKFileSystem) baseGenerator() <-chan *PathObject {
 	out := make(chan *PathObject, 1)
+	// Вызов команды "get_root" через Python‑скрипт
 	resp, err := runPython("get_root", fs.mountPoint)
 	if err != nil {
 		logger.Log(LevelError, fmt.Sprintf("Ошибка получения корневого каталога TSK для %s: %v", fs.mountPoint, err))
@@ -488,7 +470,7 @@ func (fs *TSKFileSystem) ListDirectory(p *PathObject) []*PathObject {
 	}
 	resp, err := runPython("list_directory", p.path)
 	if err != nil {
-		logger.Log(LevelError, "Ошибка чтения каталога: "+p.path+" - "+err.Error())
+		logger.Log(LevelError, fmt.Sprintf("Ошибка чтения каталога %s: %v", p.path, err))
 		return nil
 	}
 	var dirEntries []DirEntry
@@ -565,19 +547,20 @@ func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	offset := 0
 	var chunks [][]byte
 	for offset < size {
-		chunkSize := CHUNK_SIZE
-		if offset+CHUNK_SIZE > size {
-			chunkSize = size - offset
-		}
-		chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(chunkSize))
+		chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(CHUNK_SIZE))
 		if err != nil {
 			return nil, err
 		}
-		if len(chunkStr) == 0 {
+		if len(strings.TrimSpace(chunkStr)) == 0 {
 			break
 		}
-		chunks = append(chunks, []byte(chunkStr))
-		offset += chunkSize
+		// Данные возвращаются в hex-формате; декодируем в байты.
+		data, err := hex.DecodeString(strings.TrimSpace(chunkStr))
+		if err != nil {
+			return nil, err
+		}
+		chunks = append(chunks, data)
+		offset += CHUNK_SIZE
 	}
 	return chunks, nil
 }
@@ -596,35 +579,14 @@ func (fs *TSKFileSystem) GetSize(p *PathObject) int64 {
 	return size
 }
 
-// DirEntry описывает элемент каталога, возвращаемый Python-скриптом.
-type DirEntry struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	MetaType string `json:"meta_type"`
-	Size     int64  `json:"size"`
-}
-
 // -------------------
 // Вспомогательная функция runPython
 // -------------------
-
 func runPython(command string, args ...string) (string, error) {
-	// Нормализуем входной путь, если он начинается с "\".
-	for i, arg := range args {
-		if strings.HasPrefix(arg, "\\") {
-			args[i] = "/" + strings.TrimLeft(arg, "\\")
-		}
-	}
+	// Нормализуем входные аргументы, если нужно
 	pythonCmd := "python3"
 	if runtime.GOOS == "windows" {
 		pythonCmd = "python"
-	}
-	// Фиктивные данные для тестов:
-	if command == "get_root" && len(args) > 0 && args[0] == "/" {
-		return `{"name": "root", "path": "/"}`, nil
-	}
-	if command == "list_directory" && len(args) > 0 && args[0] == "/" {
-		return `[{"name": "passwords.txt", "path": "/passwords.txt", "meta_type": "REG", "size": 123}]`, nil
 	}
 	pyArgs := append([]string{"tsk_helper.py", command}, args...)
 	cmd := exec.Command(pythonCmd, pyArgs...)

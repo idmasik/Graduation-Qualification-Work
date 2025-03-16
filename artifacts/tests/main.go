@@ -255,11 +255,11 @@ func contains(slice []string, item string) bool {
 // ─── Основная функция ─────────────────────────────────────────────────────────
 
 func main() {
-	// Включаем привилегию SeBackupPrivilege.
-	if err := enableBackupPrivilege(); err != nil {
-		logger.Log(LevelWarning, fmt.Sprintf("Не удалось включить привилегию резервного копирования: %v", err))
-		// Обратите внимание: для корректного доступа к защищённым файлам может потребоваться запуск от SYSTEM.
-	}
+	// // Включаем привилегию SeBackupPrivilege.
+	// if err := enableBackupPrivilege(); err != nil {
+	// 	logger.Log(LevelWarning, fmt.Sprintf("Не удалось включить привилегию резервного копирования: %v", err))
+	// 	// Обратите внимание: для корректного доступа к защищённым файлам может потребоваться запуск от SYSTEM.
+	// }
 
 	config := parseArgs()
 	fmt.Printf("Config: %#v\n", config)
