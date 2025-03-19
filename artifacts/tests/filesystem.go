@@ -238,7 +238,7 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	}
 	// Если имя файла начинается с "$MFT" или если файл относится к реестру (например, SYSTEM, SOFTWARE и т.п.),
 	// используем TSK для защищённых файлов.
-	if isRegistryFile(p.name) {
+	if strings.HasPrefix(p.name, "$MFT") || isRegistryFile(p.name) {
 		logger.Log(LevelInfo, fmt.Sprintf("Обнаружен защищённый файл: %s, переключаемся на TSK", p.path))
 		// Создаем TSKFileSystem (используем тот же том, что и у OSFileSystem)
 		tskFS, err := NewTSKFileSystem(fs.rootPath, fs.rootPath)
@@ -308,7 +308,7 @@ func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
 }
 
 func isRegistryFile(name string) bool {
-	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT"}
+	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "NTUSER.DAT"}
 	for _, reg := range registryFiles {
 		if strings.EqualFold(name, reg) {
 			return true
@@ -342,6 +342,7 @@ type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
 
 // ------------------- TSKFileSystem (используется только для MFT и реестра) -------------------
 
+// DirEntry – структура, получаемая из Python-скрипта
 type DirEntry struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
@@ -349,12 +350,13 @@ type DirEntry struct {
 	Size     int64  `json:"size"`
 }
 
+// TSKFileSystem – используется только для MFT и файлов реестра
 type TSKFileSystem struct {
 	device       string
 	mountPoint   string
 	entriesCache map[string][]*PathObject
-	sizeCache    map[string]int // Кэш для размеров файлов (по пути)
-	rootCache    *DirEntry      // Кэш для корневого каталога
+	sizeCache    map[string]int // кэш размеров файлов
+	rootCache    *DirEntry      // кэш корневого каталога
 	*ArtifactFileSystem
 }
 
@@ -414,7 +416,7 @@ func (fs *TSKFileSystem) relativePath(fpath string) string {
 
 func (fs *TSKFileSystem) baseGenerator() <-chan *PathObject {
 	out := make(chan *PathObject, 1)
-	// Если уже кэширован корневой каталог, используем его
+	// Используем кэшированный корневой каталог, если он уже получен
 	if fs.rootCache != nil {
 		po := &PathObject{
 			filesystem: fs,
@@ -515,7 +517,7 @@ func (fs *TSKFileSystem) ListDirectory(p *PathObject) []*PathObject {
 				logger.Log(LevelWarning, fmt.Sprintf("TSK: Ошибка follow_symlink для %s: %v", entry.Name, err))
 			} else if trimmed := strings.TrimSpace(followResp); trimmed != "" {
 				logger.Log(LevelDebug, fmt.Sprintf("TSK: Символическая ссылка %s указывает на %s", entry.Name, trimmed))
-				osfs := NewOSFileSystem("/") // Фолбэк через OSFileSystem для симлинков
+				osfs := NewOSFileSystem("/") // fallback через OSFileSystem для симлинков
 				po = osfs.GetFullPath(trimmed)
 			}
 		}
@@ -561,7 +563,7 @@ func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
 
 func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	logger.Log(LevelDebug, fmt.Sprintf("TSK: Вызов ReadChunks для %s", p.path))
-	// Получаем размер файла с кэшированием
+	// Получаем размер с кэшированием
 	var size int
 	if cachedSize, ok := fs.sizeCache[p.path]; ok {
 		size = cachedSize
@@ -591,11 +593,14 @@ func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	}
 
 	chunkResults := make(chan chunkResult, expectedChunks)
+	var wg sync.WaitGroup
+	wg.Add(expectedChunks)
 
 	// Параллельное чтение чанков
 	for i := 0; i < expectedChunks; i++ {
 		offset := i * CHUNK_SIZE
 		go func(offset, index int) {
+			defer wg.Done()
 			logger.Log(LevelDebug, fmt.Sprintf("TSK: Чтение чанка для %s, offset %d, размер %d", p.path, offset, CHUNK_SIZE))
 			chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(CHUNK_SIZE))
 			if err != nil {
@@ -603,7 +608,7 @@ func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 				return
 			}
 			trimmed := strings.TrimSpace(chunkStr)
-			logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ read_chunks для %s, offset %d: '%s'", p.path, offset, trimmed))
+			//logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ read_chunks для %s, offset %d: '%s'", p.path, offset, trimmed))
 			if len(trimmed) == 0 {
 				chunkResults <- chunkResult{index: index, data: nil}
 				return
@@ -613,16 +618,11 @@ func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 		}(offset, i)
 	}
 
-	// Собираем результаты
-	var wg sync.WaitGroup
-	wg.Add(expectedChunks)
-	go func() {
-		wg.Wait()
-		close(chunkResults)
-	}()
+	wg.Wait()
+	close(chunkResults)
 
+	// Собираем результаты
 	for res := range chunkResults {
-		wg.Done()
 		if res.err != nil {
 			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка чтения чанка для %s на индекс %d: %v", p.path, res.index, res.err))
 			return nil, res.err
@@ -630,7 +630,7 @@ func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 		results[res.index] = res.data
 	}
 
-	// Собираем чанки в правильном порядке, прекращая, если обнаружим пропущенный чанк.
+	// Собираем чанки в правильном порядке, прекращая, если обнаружен пропуск.
 	var chunks [][]byte
 	for i := 0; i < expectedChunks; i++ {
 		if results[i] == nil {
@@ -792,7 +792,6 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 			}
 		}
 	}
-	// Если не выбран TSK, используем OSFileSystem.
 	if fs == nil {
 		osfs := NewOSFileSystem(volume + string(filepath.Separator))
 		logger.Log(LevelInfo, fmt.Sprintf("Используем OSFileSystem для %s", resolvedPath))

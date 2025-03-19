@@ -7,11 +7,7 @@ import pytsk3
 CHUNK_SIZE = 5 * 1024 * 1024
 
 def get_device_and_mountpoint(path):
-    """
-    Определяет устройство и точку монтирования.
-    Для Windows, если путь начинается с "C:\", возвращает device = "\\.\C:" и mountpoint = "C:\"
-    Для Unix-подобных систем возвращает (None, "/").
-    """
+    # Для Windows: определяем устройство и точку монтирования
     if os.name == 'nt':
         drive, _ = os.path.splitdrive(path)
         if not drive:
@@ -23,9 +19,7 @@ def get_device_and_mountpoint(path):
         return None, "/"
 
 def open_fs(device, mountpoint):
-    """
-    Открывает файловую систему через pytsk3.
-    """
+    # Открываем диск через pytsk3
     if os.name == 'nt':
         img_info = pytsk3.Img_Info(device)
     else:
@@ -34,10 +28,7 @@ def open_fs(device, mountpoint):
     return fs_info
 
 def get_entry(fs_info, path, mountpoint):
-    """
-    Находит запись в TSK по заданному пути.
-    Относительный путь вычисляется относительно mountpoint.
-    """
+    # Вычисляем относительный путь от точки монтирования
     if path.startswith(mountpoint):
         rel_path = path[len(mountpoint):].strip(os.sep)
     else:
@@ -62,23 +53,17 @@ def get_entry(fs_info, path, mountpoint):
     return entry
 
 def cmd_get_root(mountpoint):
-    """
-    Команда get_root: возвращает корневой каталог.
-    """
     device, mp = get_device_and_mountpoint(mountpoint)
     try:
         fs_info = open_fs(device, mp)
-        # Получаем корневой каталог
-        root_dir = fs_info.open_dir(path="/")
-        result = {"name": "root", "path": mp}
+        # Не нужно выводить весь каталог, достаточно вернуть имя "root" и точку монтирования
+        result = {"n": "root", "p": mp}
     except Exception as e:
-        result = {"error": str(e)}
-    print(json.dumps(result))
+        result = {"e": str(e)}
+    # Используем компактный JSON
+    print(json.dumps(result, separators=(',', ':')))
 
 def cmd_list_directory(path):
-    """
-    Команда list_directory: возвращает список записей в каталоге.
-    """
     device, mp = get_device_and_mountpoint(path)
     try:
         fs_info = open_fs(device, mp)
@@ -90,29 +75,21 @@ def cmd_list_directory(path):
                 continue
             name = e.info.name.name.decode("utf-8", errors="replace")
             full_path = os.path.join(path, name)
-            meta_type = ""
+            meta = ""
             if e.info.meta:
                 if e.info.meta.type == pytsk3.TSK_FS_META_TYPE_DIR:
-                    meta_type = "DIR"
+                    meta = "D"
                 elif e.info.meta.type == pytsk3.TSK_FS_META_TYPE_REG:
-                    meta_type = "REG"
+                    meta = "R"
                 elif e.info.meta.type == pytsk3.TSK_FS_META_TYPE_LNK:
-                    meta_type = "LNK"
+                    meta = "L"
             size = e.info.meta.size if e.info.meta else 0
-            entries.append({
-                "name": name,
-                "path": full_path,
-                "meta_type": meta_type,
-                "size": size
-            })
-        print(json.dumps(entries))
+            entries.append({"n": name, "p": full_path, "m": meta, "s": size})
+        print(json.dumps(entries, separators=(',', ':')))
     except Exception as e:
-        print(json.dumps([]))
+        print("[]")
 
 def cmd_get_size(path):
-    """
-    Команда get_size: возвращает размер файла в байтах.
-    """
     device, mp = get_device_and_mountpoint(path)
     try:
         fs_info = open_fs(device, mp)
@@ -123,10 +100,6 @@ def cmd_get_size(path):
         print("0")
 
 def cmd_read_chunks(path, offset_str, chunk_size_str):
-    """
-    Команда read_chunks: читает данные файла начиная с указанного смещения.
-    Данные возвращаются в виде hex-строки.
-    """
     offset = int(offset_str)
     chunk_size = int(chunk_size_str)
     device, mp = get_device_and_mountpoint(path)
@@ -142,17 +115,14 @@ def cmd_read_chunks(path, offset_str, chunk_size_str):
         return
     try:
         data = entry.read_random(offset, chunk_size)
+        # Выводим hex-строку без дополнительных пробелов
         print(data.hex())
     except Exception as e:
         print("")
 
 def cmd_follow_symlink(parent_path, link_name):
-    """
-    Команда follow_symlink: возвращает путь для символической ссылки.
-    В данном простом варианте возвращается составной путь.
-    """
-    result = os.path.join(parent_path, link_name)
-    print(result)
+    # Простой вариант: возвращаем составной путь
+    print(os.path.join(parent_path, link_name))
 
 def main():
     if len(sys.argv) < 2:
