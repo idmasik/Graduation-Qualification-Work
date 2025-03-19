@@ -7,7 +7,11 @@ import pytsk3
 CHUNK_SIZE = 5 * 1024 * 1024
 
 def get_device_and_mountpoint(path):
-    # Для Windows: если путь начинается с "C:\", device = "\\.\C:" и mountpoint = "C:\"
+    """
+    Определяет устройство и точку монтирования.
+    Для Windows, если путь начинается с "C:\", возвращает device = "\\.\C:" и mountpoint = "C:\"
+    Для Unix-подобных систем возвращает (None, "/").
+    """
     if os.name == 'nt':
         drive, _ = os.path.splitdrive(path)
         if not drive:
@@ -19,7 +23,9 @@ def get_device_and_mountpoint(path):
         return None, "/"
 
 def open_fs(device, mountpoint):
-    # Открываем диск через pytsk3
+    """
+    Открывает файловую систему через pytsk3.
+    """
     if os.name == 'nt':
         img_info = pytsk3.Img_Info(device)
     else:
@@ -28,19 +34,20 @@ def open_fs(device, mountpoint):
     return fs_info
 
 def get_entry(fs_info, path, mountpoint):
-    # Относительный путь от mountpoint
+    """
+    Находит запись в TSK по заданному пути.
+    Относительный путь вычисляется относительно mountpoint.
+    """
     if path.startswith(mountpoint):
         rel_path = path[len(mountpoint):].strip(os.sep)
     else:
         rel_path = path.strip(os.sep)
     parts = rel_path.split(os.sep) if rel_path else []
-    # Начинаем с корневого каталога
     directory = fs_info.open_dir(path="/")
     entry = None
     for part in parts:
         found = False
         for e in directory:
-            # Пропускаем "." и ".."
             if e.info.name.name in [b".", b".."]:
                 continue
             name = e.info.name.name.decode("utf-8", errors="replace")
@@ -55,19 +62,23 @@ def get_entry(fs_info, path, mountpoint):
     return entry
 
 def cmd_get_root(mountpoint):
-    # Возвращаем корневой каталог. Для TSK возвращаем данные из fs_info
+    """
+    Команда get_root: возвращает корневой каталог.
+    """
     device, mp = get_device_and_mountpoint(mountpoint)
     try:
         fs_info = open_fs(device, mp)
         # Получаем корневой каталог
         root_dir = fs_info.open_dir(path="/")
-        # Вернем простую информацию – имя и mountpoint
         result = {"name": "root", "path": mp}
     except Exception as e:
         result = {"error": str(e)}
     print(json.dumps(result))
 
 def cmd_list_directory(path):
+    """
+    Команда list_directory: возвращает список записей в каталоге.
+    """
     device, mp = get_device_and_mountpoint(path)
     try:
         fs_info = open_fs(device, mp)
@@ -99,6 +110,9 @@ def cmd_list_directory(path):
         print(json.dumps([]))
 
 def cmd_get_size(path):
+    """
+    Команда get_size: возвращает размер файла в байтах.
+    """
     device, mp = get_device_and_mountpoint(path)
     try:
         fs_info = open_fs(device, mp)
@@ -109,6 +123,10 @@ def cmd_get_size(path):
         print("0")
 
 def cmd_read_chunks(path, offset_str, chunk_size_str):
+    """
+    Команда read_chunks: читает данные файла начиная с указанного смещения.
+    Данные возвращаются в виде hex-строки.
+    """
     offset = int(offset_str)
     chunk_size = int(chunk_size_str)
     device, mp = get_device_and_mountpoint(path)
@@ -129,7 +147,10 @@ def cmd_read_chunks(path, offset_str, chunk_size_str):
         print("")
 
 def cmd_follow_symlink(parent_path, link_name):
-    # Простой вариант: возвращаем составной путь
+    """
+    Команда follow_symlink: возвращает путь для символической ссылки.
+    В данном простом варианте возвращается составной путь.
+    """
     result = os.path.join(parent_path, link_name)
     print(result)
 

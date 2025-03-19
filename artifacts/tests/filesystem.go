@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/shirou/gopsutil/disk"
 )
@@ -100,7 +101,7 @@ func (afs *ArtifactFileSystem) Collect(output *Outputs) {
 	}
 }
 
-// --- OSFileSystem (стандартный доступ через os) --- //
+// ------------------- OSFileSystem (доступ через os) ------------------- //
 
 type OSFileSystem struct {
 	rootPath string
@@ -235,10 +236,19 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	if !fs.IsFile(p) {
 		return nil, nil
 	}
-	// Если имя файла начинается с "$MFT", используем специальное чтение (TSK будет использоваться для защищённых файлов)
-	if strings.HasPrefix(p.name, "$MFT") {
-		return fs.readSystemFile(p.path)
+	// Если имя файла начинается с "$MFT" или если файл относится к реестру (например, SYSTEM, SOFTWARE и т.п.),
+	// используем TSK для защищённых файлов.
+	if isRegistryFile(p.name) {
+		logger.Log(LevelInfo, fmt.Sprintf("Обнаружен защищённый файл: %s, переключаемся на TSK", p.path))
+		// Создаем TSKFileSystem (используем тот же том, что и у OSFileSystem)
+		tskFS, err := NewTSKFileSystem(fs.rootPath, fs.rootPath)
+		if err != nil {
+			logger.Log(LevelError, fmt.Sprintf("Ошибка создания TSKFileSystem для %s: %v", fs.rootPath, err))
+			return nil, err
+		}
+		return tskFS.ReadChunks(p)
 	}
+	// Обычное чтение файла
 	file, err := os.Open(p.path)
 	if err != nil {
 		return nil, err
@@ -297,9 +307,14 @@ func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
 	return chunks, nil
 }
 
-func isSystemFile(path string) bool {
-	base := filepath.Base(path)
-	return len(base) > 0 && base[0] == '$'
+func isRegistryFile(name string) bool {
+	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT"}
+	for _, reg := range registryFiles {
+		if strings.EqualFold(name, reg) {
+			return true
+		}
+	}
+	return false
 }
 
 func readFileFromPath(path string) ([]byte, error) {
@@ -327,10 +342,19 @@ type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
 
 // ------------------- TSKFileSystem (используется только для MFT и реестра) -------------------
 
+type DirEntry struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	MetaType string `json:"meta_type"`
+	Size     int64  `json:"size"`
+}
+
 type TSKFileSystem struct {
 	device       string
 	mountPoint   string
 	entriesCache map[string][]*PathObject
+	sizeCache    map[string]int // Кэш для размеров файлов (по пути)
+	rootCache    *DirEntry      // Кэш для корневого каталога
 	*ArtifactFileSystem
 }
 
@@ -343,13 +367,14 @@ func NewTSKFileSystem(device, mountPoint string) (*TSKFileSystem, error) {
 		}
 	}
 	logger.Log(LevelDebug, fmt.Sprintf("Создан TSKFileSystem для устройства %s на точке монтирования %s", device, mountPoint))
-	fs := &TSKFileSystem{
+	tskFS := &TSKFileSystem{
 		device:       device,
 		mountPoint:   mountPoint,
 		entriesCache: make(map[string][]*PathObject),
+		sizeCache:    make(map[string]int),
 	}
-	fs.ArtifactFileSystem = NewArtifactFileSystem(fs)
-	return fs, nil
+	tskFS.ArtifactFileSystem = NewArtifactFileSystem(tskFS)
+	return tskFS, nil
 }
 
 func (fs *TSKFileSystem) parse(pattern string) []GeneratorFunc {
@@ -389,6 +414,18 @@ func (fs *TSKFileSystem) relativePath(fpath string) string {
 
 func (fs *TSKFileSystem) baseGenerator() <-chan *PathObject {
 	out := make(chan *PathObject, 1)
+	// Если уже кэширован корневой каталог, используем его
+	if fs.rootCache != nil {
+		po := &PathObject{
+			filesystem: fs,
+			name:       fs.rootCache.Name,
+			path:       fs.rootCache.Path,
+			obj:        fs.rootCache,
+		}
+		out <- po
+		close(out)
+		return out
+	}
 	logger.Log(LevelDebug, fmt.Sprintf("TSK: Вызов команды get_root для точки монтирования: %s", fs.mountPoint))
 	resp, err := runPython("get_root", fs.mountPoint)
 	if err != nil {
@@ -403,6 +440,7 @@ func (fs *TSKFileSystem) baseGenerator() <-chan *PathObject {
 		close(out)
 		return out
 	}
+	fs.rootCache = &rootEntry
 	logger.Log(LevelInfo, fmt.Sprintf("TSK: Корневой каталог: %s", rootEntry.Path))
 	po := &PathObject{
 		filesystem: fs,
@@ -523,37 +561,82 @@ func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
 
 func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	logger.Log(LevelDebug, fmt.Sprintf("TSK: Вызов ReadChunks для %s", p.path))
-	sizeStr, err := runPython("get_size", p.path)
-	if err != nil {
-		logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка получения размера для %s: %v", p.path, err))
-		return nil, err
-	}
-	logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ get_size для %s: %s", p.path, strings.TrimSpace(sizeStr)))
-	size, err := strconv.Atoi(strings.TrimSpace(sizeStr))
-	if err != nil {
-		return nil, fmt.Errorf("TSK: ошибка преобразования размера для %s: %v", p.path, err)
-	}
-	offset := 0
-	var chunks [][]byte
-	for offset < size {
-		logger.Log(LevelDebug, fmt.Sprintf("TSK: Чтение чанка для %s, offset %d, размер %d", p.path, offset, CHUNK_SIZE))
-		chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(CHUNK_SIZE))
+	// Получаем размер файла с кэшированием
+	var size int
+	if cachedSize, ok := fs.sizeCache[p.path]; ok {
+		size = cachedSize
+	} else {
+		sizeStr, err := runPython("get_size", p.path)
 		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка read_chunks для %s: %v", p.path, err))
+			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка получения размера для %s: %v", p.path, err))
 			return nil, err
 		}
-		trimmed := strings.TrimSpace(chunkStr)
-		logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ read_chunks для %s, offset %d: %s", p.path, offset, trimmed))
-		if len(trimmed) == 0 {
+		trimmedSize := strings.TrimSpace(sizeStr)
+		logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ get_size для %s: '%s'", p.path, trimmedSize))
+		size, err = strconv.Atoi(trimmedSize)
+		if err != nil {
+			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка преобразования размера для %s: %v", p.path, err))
+			return nil, fmt.Errorf("TSK: ошибка преобразования размера для %s: %v", p.path, err)
+		}
+		fs.sizeCache[p.path] = size
+	}
+	logger.Log(LevelDebug, fmt.Sprintf("TSK: Размер для %s: %d", p.path, size))
+	expectedChunks := (size + CHUNK_SIZE - 1) / CHUNK_SIZE
+	results := make([][]byte, expectedChunks)
+
+	type chunkResult struct {
+		index int
+		data  []byte
+		err   error
+	}
+
+	chunkResults := make(chan chunkResult, expectedChunks)
+
+	// Параллельное чтение чанков
+	for i := 0; i < expectedChunks; i++ {
+		offset := i * CHUNK_SIZE
+		go func(offset, index int) {
+			logger.Log(LevelDebug, fmt.Sprintf("TSK: Чтение чанка для %s, offset %d, размер %d", p.path, offset, CHUNK_SIZE))
+			chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(CHUNK_SIZE))
+			if err != nil {
+				chunkResults <- chunkResult{index: index, err: err}
+				return
+			}
+			trimmed := strings.TrimSpace(chunkStr)
+			logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ read_chunks для %s, offset %d: '%s'", p.path, offset, trimmed))
+			if len(trimmed) == 0 {
+				chunkResults <- chunkResult{index: index, data: nil}
+				return
+			}
+			data, err := hex.DecodeString(trimmed)
+			chunkResults <- chunkResult{index: index, data: data, err: err}
+		}(offset, i)
+	}
+
+	// Собираем результаты
+	var wg sync.WaitGroup
+	wg.Add(expectedChunks)
+	go func() {
+		wg.Wait()
+		close(chunkResults)
+	}()
+
+	for res := range chunkResults {
+		wg.Done()
+		if res.err != nil {
+			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка чтения чанка для %s на индекс %d: %v", p.path, res.index, res.err))
+			return nil, res.err
+		}
+		results[res.index] = res.data
+	}
+
+	// Собираем чанки в правильном порядке, прекращая, если обнаружим пропущенный чанк.
+	var chunks [][]byte
+	for i := 0; i < expectedChunks; i++ {
+		if results[i] == nil {
 			break
 		}
-		data, err := hex.DecodeString(trimmed)
-		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка декодирования hex для %s: %v", p.path, err))
-			return nil, err
-		}
-		chunks = append(chunks, data)
-		offset += CHUNK_SIZE
+		chunks = append(chunks, results[i])
 	}
 	logger.Log(LevelInfo, fmt.Sprintf("TSK: Прочитано %d чанков для %s", len(chunks), p.path))
 	return chunks, nil
@@ -566,8 +649,9 @@ func (fs *TSKFileSystem) GetSize(p *PathObject) int64 {
 		logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка получения размера для %s: %v", p.path, err))
 		return 0
 	}
-	logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ get_size для %s: %s", p.path, strings.TrimSpace(resp)))
-	size, err := strconv.ParseInt(strings.TrimSpace(resp), 10, 64)
+	trimmed := strings.TrimSpace(resp)
+	logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ get_size для %s: '%s'", p.path, trimmed))
+	size, err := strconv.ParseInt(trimmed, 10, 64)
 	if err != nil {
 		logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка парсинга размера для %s: %v", p.path, err))
 		return 0
@@ -779,11 +863,4 @@ func isValidWindowsPattern(pattern string) bool {
 	}
 	matched, _ := regexp.MatchString(`^[A-Za-z]:[\\/].+`, pattern)
 	return matched
-}
-
-type DirEntry struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	MetaType string `json:"meta_type"`
-	Size     int64  `json:"size"`
 }
