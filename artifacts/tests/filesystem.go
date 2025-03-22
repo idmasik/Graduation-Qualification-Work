@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/shirou/gopsutil/disk"
 )
@@ -326,18 +325,6 @@ func readFileFromPath(path string) ([]byte, error) {
 	return io.ReadAll(file)
 }
 
-func splitIntoChunks(data []byte) [][]byte {
-	var chunks [][]byte
-	for i := 0; i < len(data); i += CHUNK_SIZE {
-		end := i + CHUNK_SIZE
-		if end > len(data) {
-			end = len(data)
-		}
-		chunks = append(chunks, data[i:end])
-	}
-	return chunks
-}
-
 type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject
 
 // ------------------- TSKFileSystem (используется только для MFT и реестра) -------------------
@@ -360,6 +347,7 @@ type TSKFileSystem struct {
 	*ArtifactFileSystem
 }
 
+// NewTSKFileSystem создаёт новый TSKFileSystem.
 func NewTSKFileSystem(device, mountPoint string) (*TSKFileSystem, error) {
 	// На Windows приводим mountPoint к Unix‑стилю с завершающим слешем.
 	if runtime.GOOS == "windows" {
@@ -562,83 +550,15 @@ func (fs *TSKFileSystem) GetFullPath(fullpath string) *PathObject {
 }
 
 func (fs *TSKFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
-	logger.Log(LevelDebug, fmt.Sprintf("TSK: Вызов ReadChunks для %s", p.path))
-	// Получаем размер с кэшированием
-	var size int
-	if cachedSize, ok := fs.sizeCache[p.path]; ok {
-		size = cachedSize
-	} else {
-		sizeStr, err := runPython("get_size", p.path)
-		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка получения размера для %s: %v", p.path, err))
-			return nil, err
-		}
-		trimmedSize := strings.TrimSpace(sizeStr)
-		logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ get_size для %s: '%s'", p.path, trimmedSize))
-		size, err = strconv.Atoi(trimmedSize)
-		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка преобразования размера для %s: %v", p.path, err))
-			return nil, fmt.Errorf("TSK: ошибка преобразования размера для %s: %v", p.path, err)
-		}
-		fs.sizeCache[p.path] = size
+	// Для одного файла вызываем BatchReadChunks с единственным элементом.
+	resultMap, err := fs.BatchReadChunks([]*PathObject{p})
+	if err != nil {
+		return nil, err
 	}
-	logger.Log(LevelDebug, fmt.Sprintf("TSK: Размер для %s: %d", p.path, size))
-	expectedChunks := (size + CHUNK_SIZE - 1) / CHUNK_SIZE
-	results := make([][]byte, expectedChunks)
-
-	type chunkResult struct {
-		index int
-		data  []byte
-		err   error
+	chunks, exists := resultMap[p.GetPath()]
+	if !exists {
+		return nil, fmt.Errorf("Нет результата для %s", p.GetPath())
 	}
-
-	chunkResults := make(chan chunkResult, expectedChunks)
-	var wg sync.WaitGroup
-	wg.Add(expectedChunks)
-
-	// Параллельное чтение чанков
-	for i := 0; i < expectedChunks; i++ {
-		offset := i * CHUNK_SIZE
-		go func(offset, index int) {
-			defer wg.Done()
-			logger.Log(LevelDebug, fmt.Sprintf("TSK: Чтение чанка для %s, offset %d, размер %d", p.path, offset, CHUNK_SIZE))
-			chunkStr, err := runPython("read_chunks", p.path, strconv.Itoa(offset), strconv.Itoa(CHUNK_SIZE))
-			if err != nil {
-				chunkResults <- chunkResult{index: index, err: err}
-				return
-			}
-			trimmed := strings.TrimSpace(chunkStr)
-			//logger.Log(LevelDebug, fmt.Sprintf("TSK: Ответ read_chunks для %s, offset %d: '%s'", p.path, offset, trimmed))
-			if len(trimmed) == 0 {
-				chunkResults <- chunkResult{index: index, data: nil}
-				return
-			}
-			data, err := hex.DecodeString(trimmed)
-			chunkResults <- chunkResult{index: index, data: data, err: err}
-		}(offset, i)
-	}
-
-	wg.Wait()
-	close(chunkResults)
-
-	// Собираем результаты
-	for res := range chunkResults {
-		if res.err != nil {
-			logger.Log(LevelError, fmt.Sprintf("TSK: Ошибка чтения чанка для %s на индекс %d: %v", p.path, res.index, res.err))
-			return nil, res.err
-		}
-		results[res.index] = res.data
-	}
-
-	// Собираем чанки в правильном порядке, прекращая, если обнаружен пропуск.
-	var chunks [][]byte
-	for i := 0; i < expectedChunks; i++ {
-		if results[i] == nil {
-			break
-		}
-		chunks = append(chunks, results[i])
-	}
-	logger.Log(LevelInfo, fmt.Sprintf("TSK: Прочитано %d чанков для %s", len(chunks), p.path))
 	return chunks, nil
 }
 
@@ -862,4 +782,77 @@ func isValidWindowsPattern(pattern string) bool {
 	}
 	matched, _ := regexp.MatchString(`^[A-Za-z]:[\\/].+`, pattern)
 	return matched
+}
+
+// BatchReadChunks принимает список путей (для одного тома) и возвращает для каждого путь список чанков.
+func (fs *TSKFileSystem) BatchReadChunks(paths []*PathObject) (map[string][][]byte, error) {
+	var pathList []string
+	for _, p := range paths {
+		pathList = append(pathList, p.GetPath())
+	}
+	inputJSON, err := json.Marshal(pathList)
+	if err != nil {
+		return nil, err
+	}
+	output, err := runPythonWithInput("batch_collect", string(inputJSON))
+	if err != nil {
+		return nil, err
+	}
+	var results map[string]string
+	err = json.Unmarshal([]byte(output), &results)
+	if err != nil {
+		return nil, err
+	}
+	resultChunks := make(map[string][][]byte)
+	for path, hexStr := range results {
+		if hexStr == "" {
+			resultChunks[path] = nil
+		} else {
+			data, err := hex.DecodeString(hexStr)
+			if err != nil {
+				return nil, err
+			}
+			// Разбиваем данные на чанки, если они превышают CHUNK_SIZE.
+			chunks := splitIntoChunks(data)
+			resultChunks[path] = chunks
+		}
+	}
+	return resultChunks, nil
+}
+
+// runPythonWithInput выполняет вызов python‑скрипта с передачей данных через stdin.
+func runPythonWithInput(command string, input string) (string, error) {
+	pythonCmd := "python3"
+	if runtime.GOOS == "windows" {
+		pythonCmd = "python"
+	}
+	cmd := exec.Command(pythonCmd, "tsk_helper.py", command)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", err
+	}
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, input)
+	}()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ошибка выполнения python-команды: %v, вывод: %s", err, output)
+	}
+	return string(output), nil
+}
+
+// splitIntoChunks разбивает данные на чанки по CHUNK_SIZE.
+func splitIntoChunks(data []byte) [][]byte {
+	var chunks [][]byte
+	for i := 0; i < len(data); i += CHUNK_SIZE {
+		end := i + CHUNK_SIZE
+		if end > len(data) {
+			end = len(data)
+		}
+		chunk := make([]byte, end-i)
+		copy(chunk, data[i:end])
+		chunks = append(chunks, chunk)
+	}
+	return chunks
 }

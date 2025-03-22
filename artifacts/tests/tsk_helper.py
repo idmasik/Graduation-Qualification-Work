@@ -60,7 +60,6 @@ def cmd_get_root(mountpoint):
         result = {"n": "root", "p": mp}
     except Exception as e:
         result = {"e": str(e)}
-    # Используем компактный JSON
     print(json.dumps(result, separators=(',', ':')))
 
 def cmd_list_directory(path):
@@ -115,14 +114,34 @@ def cmd_read_chunks(path, offset_str, chunk_size_str):
         return
     try:
         data = entry.read_random(offset, chunk_size)
-        # Выводим hex-строку без дополнительных пробелов
         print(data.hex())
     except Exception as e:
         print("")
 
 def cmd_follow_symlink(parent_path, link_name):
-    # Простой вариант: возвращаем составной путь
     print(os.path.join(parent_path, link_name))
+
+def cmd_batch_collect():
+    # Новая команда для пакетного сбора защищённых файлов
+    input_data = sys.stdin.read()
+    try:
+        paths = json.loads(input_data)  # ожидается список путей
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
+    results = {}
+    for path in paths:
+        try:
+            device, mp = get_device_and_mountpoint(path)
+            fs_info = open_fs(device, mp)
+            entry = get_entry(fs_info, path, mp)
+            size = entry.info.meta.size if entry.info.meta else 0
+            # Читаем весь файл за один вызов (при необходимости можно реализовать чтение по чанкам)
+            data = entry.read_random(0, size)
+            results[path] = data.hex()
+        except Exception as e:
+            results[path] = ""
+    print(json.dumps(results, separators=(',', ':')))
 
 def main():
     if len(sys.argv) < 2:
@@ -162,6 +181,8 @@ def main():
         parent_path = sys.argv[2]
         link_name = sys.argv[3]
         cmd_follow_symlink(parent_path, link_name)
+    elif command == "batch_collect":
+        cmd_batch_collect()
     else:
         print(f"Unknown command: {command}")
         sys.exit(1)

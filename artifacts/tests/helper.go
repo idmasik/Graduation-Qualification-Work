@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -37,18 +38,21 @@ func getOperatingSystem() (string, error) {
 
 // enableBackupPrivilege запрашивает привилегию SeBackupPrivilege для текущего процесса.
 func enableBackupPrivilege() error {
-	var token windows.Token
-	currentProcess := windows.CurrentProcess()
-	err := windows.OpenProcessToken(currentProcess, windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, &token)
+	var hToken windows.Token
+	currentProcess, err := windows.GetCurrentProcess()
 	if err != nil {
-		return fmt.Errorf("OpenProcessToken failed: %v", err)
+		return fmt.Errorf("не удалось получить текущий процесс: %v", err)
 	}
-	defer token.Close()
+	err = windows.OpenProcessToken(currentProcess, windows.TOKEN_ADJUST_PRIVILEGES|windows.TOKEN_QUERY, &hToken)
+	if err != nil {
+		return fmt.Errorf("не удалось открыть токен процесса: %v", err)
+	}
+	defer hToken.Close()
 
 	var luid windows.LUID
-	err = windows.LookupPrivilegeValue(nil, windows.StringToUTF16Ptr("SeBackupPrivilege"), &luid)
+	err = windows.LookupPrivilegeValue(nil, syscall.StringToUTF16Ptr("SeBackupPrivilege"), &luid)
 	if err != nil {
-		return fmt.Errorf("LookupPrivilegeValue failed: %v", err)
+		return fmt.Errorf("не удалось найти значение привилегии SeBackupPrivilege: %v", err)
 	}
 
 	tp := windows.Tokenprivileges{
@@ -61,15 +65,13 @@ func enableBackupPrivilege() error {
 		},
 	}
 
-	err = windows.AdjustTokenPrivileges(token, false, &tp, uint32(unsafe.Sizeof(tp)), nil, nil)
+	err = windows.AdjustTokenPrivileges(hToken, false, &tp, uint32(unsafe.Sizeof(tp)), nil, nil)
 	if err != nil {
-		return fmt.Errorf("AdjustTokenPrivileges failed: %v", err)
+		return fmt.Errorf("не удалось изменить привилегии токена: %v", err)
 	}
 
-	if windows.GetLastError() == windows.ERROR_NOT_ALL_ASSIGNED {
-		return fmt.Errorf("The token does not have the specified privilege")
-	}
-
+	// Отладка: проверьте, включилась ли привилегия
+	logger.Log(LevelDebug, "SeBackupPrivilege успешно включена")
 	return nil
 }
 
@@ -191,13 +193,4 @@ expose %s X:`, volume, volume)
 	}
 	exposedDrive := strings.TrimSpace(matches[1])
 	return exposedDrive, nil
-}
-
-// getShadowCopyPath заменяет префикс оригинального тома (например, "C:") на полученную букву теневой копии (например, "X:").
-func getShadowCopyPath(originalPath, volume, shadowDrive string) string {
-	// Если путь начинается с тома (например, "C:" или "C:\"), заменяем его на shadowDrive.
-	if strings.HasPrefix(strings.ToUpper(originalPath), strings.ToUpper(volume)) {
-		return shadowDrive + originalPath[len(volume):]
-	}
-	return originalPath
 }
