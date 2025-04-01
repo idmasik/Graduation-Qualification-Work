@@ -57,23 +57,6 @@ func (w *WMIExecutor) Collect(output *Outputs) {
 	}
 }
 
-// func (w *WMIExecutor) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
-//     if artifactSource.TypeIndicator == TYPE_INDICATOR_WMI_QUERY {
-//         if query, ok := artifactSource.Attributes["query"].(string); ok {
-//             resolvedQueries := variables.Substitute(query)
-//             for q := range resolvedQueries {
-//                 w.queries = append(w.queries, WMIQuery{
-//                     Artifact:   artifactDefinition.Name,
-//                     Query:      q,
-//                     BaseObject: artifactSource.Attributes["base_object"].(string),
-//                 })
-//             }
-//             return true
-//         }
-//     }
-//     return false
-// }
-
 // addQuery добавляет новый WMI-запрос в список.
 func (w *WMIExecutor) addQuery(artifact, query, baseObject string) {
 	w.queries = append(w.queries, WMIQuery{

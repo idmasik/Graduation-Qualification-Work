@@ -1,7 +1,5 @@
 package main
 
-//"fmt"
-
 // ArtifactDefinition представляет полное определение артефакта
 
 type ArtifactDefinition struct {
@@ -81,13 +79,3 @@ func (a *ArtifactDefinition) AsDict() map[string]interface{} {
 	}
 	return artifactDict
 }
-
-// //Пример использования:
-// func main() {
-// 	artifact := NewArtifactDefinition("ExampleArtifact", []string{"ex_art"}, "Пример определения артефакта")
-// 	attrs := map[string]interface{}{"path": "/var/log/example.log"}
-// 	if _, err := artifact.AppendSource("FILE", attrs); err != nil {
-// 		fmt.Println("Ошибка добавления источника:", err)
-// 	}
-// 	fmt.Printf("Artifact as dict: %#v\n", artifact.AsDict())
-// }

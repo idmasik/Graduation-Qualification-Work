@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 )
 
 // AbstractCollector задаёт интерфейс для сборщиков артефактов.
@@ -22,9 +24,6 @@ type Collector struct {
 	sources    int
 	collectors []AbstractCollector
 }
-
-// NewCollector создаёт новый Collector для указанной платформы.
-// Параметр collectors должен содержать список объектов, реализующих интерфейс AbstractCollector.
 
 // NewCollector создаёт новый Collector для указанной платформы,
 // при этом переменные хоста инициализируются независимо от платформы.
@@ -54,20 +53,37 @@ func NewCollector(platform string, collectors []AbstractCollector) *Collector {
 	}
 }
 
-// RegisterSource пытается зарегистрировать источник артефакта у каждого из внутренних сборщиков.
-func (c *Collector) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source) {
-	supported := false
+func isSourceSupportedOnCurrentOS(artifactDefinition *ArtifactDefinition) bool {
+	// Если SupportedOS не задан, считаем, что источник поддерживается на всех ОС
+	if len(artifactDefinition.SupportedOS) == 0 {
+		return true
+	}
+	currentOS := runtime.GOOS
+	for _, osName := range artifactDefinition.SupportedOS {
+		if strings.EqualFold(osName, currentOS) {
+			return true
+		}
+	}
+	return false
+}
 
+func (c *Collector) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source) {
+	// Если источник не поддерживается на текущей ОС, пропускаем регистрацию
+	if !isSourceSupportedOnCurrentOS(artifactDefinition) {
+		logger.Log(LevelWarning,
+			fmt.Sprintf("Skipping source for '%s' as it is not supported on %s", artifactDefinition.Name, runtime.GOOS))
+		return
+	}
+
+	supported := false
 	for _, collector := range c.collectors {
 		if collector.RegisterSource(artifactDefinition, artifactSource, c.variables) {
 			supported = true
 		}
 	}
-
 	if supported {
 		c.sources++
 	} else if artifactSource.TypeIndicator != TYPE_INDICATOR_ARTIFACT_GROUP {
-		// Выводим предупреждение, если тип источника не поддерживается
 		logger.Log(LevelWarning,
 			fmt.Sprintf("Cannot process source for '%s' because type '%s' is not supported",
 				artifactDefinition.Name, artifactSource.TypeIndicator))
