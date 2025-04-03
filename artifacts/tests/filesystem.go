@@ -613,25 +613,44 @@ func NewFileSystemManager(variables *HostVariables) (*FileSystemManager, error) 
 	}, nil
 }
 
+// getMountPoint выбирает лучшую точку монтирования для указанного пути, с учетом особенностей ОС.
 func (fsm *FileSystemManager) getMountPoint(path string) (*disk.PartitionStat, error) {
-	path = filepath.ToSlash(path)
-	var best *disk.PartitionStat
-	bestLength := 0
-	for _, mp := range fsm.mountPoints {
-		mpt := filepath.ToSlash(mp.Mountpoint)
-		if strings.HasPrefix(path, mpt) {
-			if len(mpt) > bestLength {
+	if runtime.GOOS == "windows" {
+		// Для Windows используем ToSlash для нормализации пути.
+		path = filepath.ToSlash(path)
+		var best *disk.PartitionStat
+		bestLength := 0
+		for _, mp := range fsm.mountPoints {
+			mpt := filepath.ToSlash(mp.Mountpoint)
+			if strings.HasPrefix(path, mpt) && len(mpt) > bestLength {
 				best = &mp
 				bestLength = len(mpt)
 			}
 		}
+		if best == nil {
+			return nil, fmt.Errorf("не найдена точка монтирования для пути %s", path)
+		}
+		return best, nil
+	} else {
+		// Для Unix нормализуем путь через Clean.
+		path = filepath.Clean(path)
+		var best *disk.PartitionStat
+		bestLength := 0
+		for _, mp := range fsm.mountPoints {
+			mpt := filepath.Clean(mp.Mountpoint)
+			if strings.HasPrefix(path, mpt) && len(mpt) > bestLength {
+				best = &mp
+				bestLength = len(mpt)
+			}
+		}
+		if best == nil {
+			return nil, fmt.Errorf("mount point not found for path: %s", path)
+		}
+		return best, nil
 	}
-	if best == nil {
-		return nil, fmt.Errorf("не найдена точка монтирования для пути %s", path)
-	}
-	return best, nil
 }
 
+// GetPathObject возвращает объект пути, полученный из файловой системы.
 func (fsm *FileSystemManager) GetPathObject(path string) (*PathObject, error) {
 	fs, err := fsm.getFilesystem(path)
 	if err != nil {
@@ -640,10 +659,13 @@ func (fsm *FileSystemManager) GetPathObject(path string) (*PathObject, error) {
 	return fs.GetFullPath(path), nil
 }
 
+// AddPattern добавляет шаблон для артефакта в соответствующую файловую систему.
 func (fsm *FileSystemManager) AddPattern(artifact, pattern, sourceType string) {
+	// Осуществляем нормализацию пути.
 	pattern = filepath.Clean(pattern)
 	if len(pattern) > 0 && pattern[0] == '\\' {
 		for _, mp := range fsm.mountPoints {
+			// Используем TSK для тех файловых систем, которые поддерживаются.
 			if TSK_FILESYSTEMS[mp.Fstype] {
 				extendedPattern := filepath.Join(mp.Mountpoint, pattern[1:])
 				filesystem := fsm.getFilesystemOrError(extendedPattern)
@@ -660,6 +682,7 @@ func (fsm *FileSystemManager) AddPattern(artifact, pattern, sourceType string) {
 	}
 }
 
+// getFilesystemOrError возвращает файловую систему для указанного пути или логирует ошибку.
 func (fsm *FileSystemManager) getFilesystemOrError(path string) FileSystem {
 	fs, err := fsm.getFilesystem(path)
 	if err != nil {
@@ -669,6 +692,7 @@ func (fsm *FileSystemManager) getFilesystemOrError(path string) FileSystem {
 	return fs
 }
 
+// Collect вызывает сбор артефактов для каждой файловой системы.
 func (fsm *FileSystemManager) Collect(output *Outputs) {
 	for mount, fs := range fsm.filesystems {
 		logger.Log(LevelDebug, fmt.Sprintf("Начало сбора для '%s'", mount))
@@ -676,6 +700,7 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 	}
 }
 
+// getFilesystem определяет, какую файловую систему использовать для указанного пути.
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	resolvedPaths := fsm.variables.Substitute(path)
 	if len(resolvedPaths) == 0 {
@@ -700,9 +725,17 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	}
 	var fs FileSystem
 	upperPath := strings.ToUpper(resolvedPath)
-	// Если путь содержит "$MFT" или "SYSTEM32/CONFIG", используем TSK
+	// Если путь содержит "$MFT" или "SYSTEM32/CONFIG", используем TSK для защищённых файлов.
 	if strings.Contains(upperPath, "$MFT") || strings.Contains(upperPath, "SYSTEM32/CONFIG") {
-		if TSK_FILESYSTEMS[mp.Fstype] {
+		// Для обеих ОС проверяем, что файловая система поддерживается TSK.
+		// Для Unix можно сравнить в нижнем регистре, для Windows – оставляем как есть.
+		var fsSupported bool
+		if runtime.GOOS == "windows" {
+			fsSupported = TSK_FILESYSTEMS[mp.Fstype]
+		} else {
+			fsSupported = TSK_FILESYSTEMS[strings.ToLower(mp.Fstype)]
+		}
+		if fsSupported {
 			tskFS, err := NewTSKFileSystem(mp.Device, mp.Mountpoint)
 			if err != nil {
 				logger.Log(LevelError, fmt.Sprintf("Не удалось создать TSKFileSystem для тома %s: %v", mp.Mountpoint, err))
@@ -721,6 +754,7 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	return fs, nil
 }
 
+// RegisterSource регистрирует источник артефакта в файловой системе, если он поддерживается.
 func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
 	supported := false
 	if artifactSource.TypeIndicator == TYPE_INDICATOR_FILE ||
@@ -739,21 +773,30 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 			logger.Log(LevelError, "Неверный или пустой список путей в источнике")
 			return false
 		}
-		for _, p := range pathsSlice {
-			p = strings.ReplaceAll(p, "\\", "/")
-			substituted := variables.Substitute(p)
-			for sp := range substituted {
-				sp = strings.ReplaceAll(sp, "\\", "/")
-				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(sp, "*") {
-					sp = sp + string(filepath.Separator) + "**-1"
+		for _, patternStr := range pathsSlice {
+			// Унифицируем разделители для Windows.
+			patternStr = strings.ReplaceAll(patternStr, "\\", "/")
+			substitutedMap := variables.Substitute(patternStr)
+			for resPath := range substitutedMap {
+				resolvedPath := strings.ReplaceAll(resPath, "\\", "/")
+				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(resolvedPath, "*") {
+					resolvedPath = resolvedPath + string(filepath.Separator) + "**-1"
 				}
-				if runtime.GOOS == "windows" && !isValidWindowsPattern(sp) {
+				// Для Windows проверяем корректность шаблона.
+				if runtime.GOOS == "windows" && !isValidWindowsPattern(resolvedPath) {
 					continue
 				}
-				if strings.HasPrefix(sp, "/") {
+				if strings.HasPrefix(resolvedPath, "/") {
 					for _, mp := range fsm.mountPoints {
-						if TSK_FILESYSTEMS[strings.ToUpper(mp.Fstype)] {
-							extendedPattern := filepath.Join(mp.Mountpoint, strings.TrimPrefix(sp, "/"))
+						// Для Unix приводим Fstype к нижнему регистру, для Windows оставляем как есть.
+						var fsSupported bool
+						if runtime.GOOS == "windows" {
+							fsSupported = TSK_FILESYSTEMS[mp.Fstype]
+						} else {
+							fsSupported = TSK_FILESYSTEMS[strings.ToLower(mp.Fstype)]
+						}
+						if fsSupported {
+							extendedPattern := filepath.Join(mp.Mountpoint, strings.TrimPrefix(resolvedPath, "/"))
 							fs, err := fsm.getFilesystem(extendedPattern)
 							if err == nil {
 								fs.AddPattern(artifactDefinition.Name, extendedPattern, artifactSource.TypeIndicator)
@@ -763,11 +806,11 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 						}
 					}
 				} else {
-					fs, err := fsm.getFilesystem(sp)
+					fs, err := fsm.getFilesystem(resolvedPath)
 					if err == nil {
-						fs.AddPattern(artifactDefinition.Name, sp, artifactSource.TypeIndicator)
+						fs.AddPattern(artifactDefinition.Name, resolvedPath, artifactSource.TypeIndicator)
 					} else {
-						logger.Log(LevelError, fmt.Sprintf("Ошибка получения файловой системы для шаблона %s: %v", sp, err))
+						logger.Log(LevelError, fmt.Sprintf("Ошибка получения файловой системы для шаблона %s: %v", resolvedPath, err))
 					}
 				}
 			}
@@ -776,6 +819,7 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 	return supported
 }
 
+// isValidWindowsPattern проверяет корректность шаблона пути для Windows.
 func isValidWindowsPattern(pattern string) bool {
 	if runtime.GOOS != "windows" {
 		return true

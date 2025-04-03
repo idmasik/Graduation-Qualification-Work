@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// Уровни логирования (аналогичные Python)
+// Уровни логирования
 const (
 	LevelDebug    = 10
 	LevelProgress = 25
@@ -53,9 +53,3 @@ func (l *Logger) Log(level int, msg string) {
 
 // Создание глобального логгера
 var logger = NewLogger("fastir: ", LevelDebug)
-
-// func main() {
-// 	// Пример использования
-// 	logger.Log(LevelProgress, "Прогресс выполнения")
-// 	logger.Log(LevelDebug, "Отладочная информация")
-// }

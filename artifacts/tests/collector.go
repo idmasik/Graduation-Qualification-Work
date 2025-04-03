@@ -27,24 +27,32 @@ type Collector struct {
 
 // NewCollector создаёт новый Collector для указанной платформы,
 // при этом переменные хоста инициализируются независимо от платформы.
-// NewCollector создаёт новый Collector для указанной платформы с инициализированными переменными.
+// NewCollector создаёт новый Collector с выбором функции инициализации переменных и сборщиков,
+// зависящих от ОС.
 func NewCollector(platform string, collectors []AbstractCollector) *Collector {
-	hv := NewHostVariables(windowsInitFunc)
+	var initFunc func(*HostVariables)
+	// Выбираем функцию инициализации переменных в зависимости от платформы.
+	if runtime.GOOS == "windows" {
+		initFunc = windowsInitFunc
+	} else {
+		initFunc = initUnixHostVariables
+	}
+	hv := NewHostVariables(initFunc)
 
-	// Initialize required collectors
 	fsManager, err := NewFileSystemManager(hv)
 	if err != nil {
 		logger.Log(LevelCritical, fmt.Sprintf("Failed to create FS manager: %v", err))
 		os.Exit(1)
 	}
-
+	// Формируем список сборщиков: всегда добавляем CommandExecutor и FSManager.
 	defaultCollectors := []AbstractCollector{
 		NewCommandExecutor(),
 		fsManager,
-		NewRegistryCollector(),
-		NewWMIExecutor(),
 	}
-
+	// Для Windows добавляем сборщики реестра и WMI.
+	if runtime.GOOS == "windows" {
+		defaultCollectors = append(defaultCollectors, NewRegistryCollector(), NewWMIExecutor())
+	}
 	return &Collector{
 		platform:   platform,
 		variables:  hv,
