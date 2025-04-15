@@ -280,49 +280,14 @@ func (fs *OSFileSystem) GetSize(p *PathObject) int64 {
 	return info.Size()
 }
 
-// readSystemFile – простое чтение файла через os.Open.
-func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var chunks [][]byte
-	buf := make([]byte, CHUNK_SIZE)
-	for {
-		n, err := file.Read(buf)
-		if n > 0 {
-			chunk := make([]byte, n)
-			copy(chunk, buf[:n])
-			chunks = append(chunks, chunk)
-		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-	}
-	return chunks, nil
-}
-
 func isRegistryFile(name string) bool {
-	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "NTUSER.DAT", "$LogFile"}
+	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "NTUSER.DAT"}
 	for _, reg := range registryFiles {
 		if strings.EqualFold(name, reg) {
 			return true
 		}
 	}
 	return false
-}
-
-func readFileFromPath(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return io.ReadAll(file)
 }
 
 type GeneratorFunc func(source <-chan *PathObject) <-chan *PathObject

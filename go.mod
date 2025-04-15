@@ -11,6 +11,7 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	golang.org/x/text v0.24.0 // indirect
 )
 
 require (
