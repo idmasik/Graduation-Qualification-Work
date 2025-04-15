@@ -123,9 +123,9 @@ func (o *Outputs) GetCommands() map[string]map[string]string {
 	return o.commands
 }
 
-func (o *Outputs) GetWMI() map[string]map[string]string {
-	return o.wmi
-}
+// func (o *Outputs) GetWMI() map[string]map[string]string {
+// 	return o.wmi
+// }
 
 func (o *Outputs) GetRegistry() map[string]map[string]map[string]interface{} {
 	return o.registry

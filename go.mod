@@ -15,6 +15,7 @@ require (
 
 require (
 	github.com/StackExchange/wmi v1.2.1
+	github.com/jdrowell/go-tsk v0.0.0-20230518231720-af4d22110c29
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sys v0.28.0

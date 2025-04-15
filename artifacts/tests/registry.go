@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -134,113 +133,6 @@ func (r *ArtifactDefinitionsRegistry) RegisterDefinition(definition *ArtifactDef
 			}
 		}
 	}
-
-	return nil
-}
-
-// RegisterSourceType регистрирует новый тип источника.
-func (r *ArtifactDefinitionsRegistry) RegisterSourceType(sourceType SourceType) error {
-	indicator := sourceType.TypeIndicator()
-	if r.sourceTypeFactory.sourceTypeConstructors[indicator] != nil {
-		return fmt.Errorf("source type already registered for indicator: %s", indicator)
-	}
-
-	// Регистрация конструктора для типа
-	r.sourceTypeFactory.RegisterSourceType(indicator, func(attrs map[string]interface{}) (SourceType, error) {
-		switch indicator {
-		case TYPE_INDICATOR_ARTIFACT_GROUP:
-			names, ok := attrs["names"].([]string)
-			if !ok || len(names) == 0 {
-				return nil, errors.New("invalid names for artifact group")
-			}
-			return NewArtifactGroupSourceType(names)
-
-		case TYPE_INDICATOR_COMMAND:
-			cmd, ok1 := attrs["cmd"].(string)
-			args, ok2 := attrs["args"].([]string)
-			if !ok1 || !ok2 || cmd == "" || len(args) == 0 {
-				return nil, errors.New("missing cmd or args for command source")
-			}
-			return NewCommandSourceType(cmd, args)
-
-		case TYPE_INDICATOR_DIRECTORY:
-			paths, ok := convertToStringSlice(attrs["paths"])
-			if !ok || len(paths) == 0 {
-				return nil, errors.New("invalid paths for directory source")
-			}
-			separator, _ := attrs["separator"].(string)
-			return NewDirectorySourceType(paths, separator)
-
-		case TYPE_INDICATOR_FILE:
-			// Получаем paths из атрибутов
-			pathsInterface, ok := attrs["paths"]
-			if !ok {
-				return nil, errors.New("missing paths for file source")
-			}
-
-			// Проверяем тип paths
-			pathsSlice, ok := pathsInterface.([]interface{})
-			if !ok {
-				return nil, errors.New("paths must be a list")
-			}
-
-			// Конвертируем элементы в строки
-			var paths []string
-			for _, p := range pathsSlice {
-				pathStr, ok := p.(string)
-				if !ok {
-					return nil, errors.New("path must be a string")
-				}
-				paths = append(paths, pathStr)
-			}
-
-			// Проверяем наличие хотя бы одного пути
-			if len(paths) == 0 {
-				return nil, errors.New("empty paths list for file source")
-			}
-
-			// Получаем разделитель (с дефолтным значением)
-			separator, _ := attrs["separator"].(string)
-			if separator == "" {
-				separator = "/"
-			}
-
-			return NewFileSourceType(paths, separator)
-
-		case TYPE_INDICATOR_PATH:
-			paths, ok := convertToStringSlice(attrs["paths"])
-			if !ok || len(paths) == 0 {
-				return nil, errors.New("invalid paths for path source")
-			}
-			separator, _ := attrs["separator"].(string)
-			return NewPathSourceType(paths, separator)
-
-		case TYPE_INDICATOR_WINDOWS_REGISTRY_KEY:
-			keys, ok := convertToStringSlice(attrs["keys"])
-			if !ok || len(keys) == 0 {
-				return nil, errors.New("invalid keys for registry key source")
-			}
-			return NewWindowsRegistryKeySourceType(keys)
-
-		case TYPE_INDICATOR_WINDOWS_REGISTRY_VALUE:
-			pairs, ok := attrs["key_value_pairs"].([]map[string]string)
-			if !ok || len(pairs) == 0 {
-				return nil, errors.New("invalid key-value pairs for registry value source")
-			}
-			return NewWindowsRegistryValueSourceType(pairs)
-
-		case TYPE_INDICATOR_WMI_QUERY:
-			query, ok := attrs["query"].(string)
-			if !ok || query == "" {
-				return nil, errors.New("missing query for WMI source")
-			}
-			baseObj, _ := attrs["base_object"].(string)
-			return NewWMIQuerySourceType(baseObj, query)
-
-		default:
-			return nil, fmt.Errorf("unsupported type: %s", indicator)
-		}
-	})
 
 	return nil
 }

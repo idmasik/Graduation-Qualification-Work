@@ -6,114 +6,85 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"strings"
 )
 
-// ---------------------------------------------------------------------
-// Реализация WMI-запроса и WMIExecutor (аналог Python-версии)
-// ---------------------------------------------------------------------
-
-// wmiQuery выполняет WMI-запрос и возвращает результат в виде JSON-строки.
-// Если baseObject пустой, то используется значение по умолчанию.
-// В реальной реализации здесь следует использовать вызовы COM или специализированную библиотеку.
-func wmiQuery(query string, baseObject string) (string, error) {
-	if baseObject == "" {
-		baseObject = `winmgmts:\root\cimv2`
-	}
-
-	// Здесь должна быть логика выполнения WMI-запроса.
-	// В Python-версии результаты перебираются, при этом пропуская COM-объекты.
-	// В данном примере возвращается пустой JSON-массив.
-	dummyResult := []map[string]interface{}{}
-	resultBytes, err := json.Marshal(dummyResult)
+// wmiQueryPS выполняет WMI‑запрос через PowerShell и возвращает JSON‑строку.
+func wmiQueryPS(query, namespace string) (string, error) {
+	ps := fmt.Sprintf(
+		"Get-CimInstance -Namespace '%s' -Query \"%s\" | ConvertTo-Json -Depth 3",
+		namespace, query,
+	)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("powershell failed: %v: %s", err, out)
 	}
-	return string(resultBytes), nil
+	return strings.TrimSpace(string(out)), nil
 }
 
-// WMIQuery хранит параметры отдельного WMI-запроса.
 type WMIQuery struct {
-	Artifact   string
-	Query      string
-	BaseObject string
+	Artifact, Query, BaseObject string
 }
 
-// WMIExecutor реализует интерфейс AbstractCollector для сбора данных WMI.
 type WMIExecutor struct {
 	queries []WMIQuery
 }
 
 func NewWMIExecutor() *WMIExecutor {
-	return &WMIExecutor{
-		queries: make([]WMIQuery, 0),
+	return &WMIExecutor{queries: make([]WMIQuery, 0)}
+}
+
+func (w *WMIExecutor) addQuery(artifact, query, baseObject string) {
+	w.queries = append(w.queries, WMIQuery{artifact, query, baseObject})
+}
+
+func (w *WMIExecutor) RegisterSource(def *ArtifactDefinition, src *Source, vars *HostVariables) bool {
+	if strings.ToUpper(src.TypeIndicator) != TYPE_INDICATOR_WMI {
+		return false
 	}
+	qRaw, ok := src.Attributes["query"].(string)
+	if !ok {
+		return false
+	}
+	base := ""
+	if bo, ok := src.Attributes["base_object"].(string); ok {
+		base = bo
+	}
+	if strings.Contains(qRaw, "%%") {
+		for _, sub := range vars.Substitute(qRaw) {
+			w.addQuery(def.Name, fmt.Sprintf("%v", sub), base)
+		}
+	} else {
+		w.addQuery(def.Name, qRaw, base)
+	}
+	return true
 }
 
 func (w *WMIExecutor) Collect(output *Outputs) {
 	for _, q := range w.queries {
-		result, err := wmiQuery(q.Query, q.BaseObject)
+		ns := "root\\cimv2"
+		if bo := strings.TrimPrefix(q.BaseObject, "winmgmts:"); bo != "" {
+			ns = strings.Trim(bo, `\ `)
+		}
+
+		raw, err := wmiQueryPS(q.Query, ns)
 		if err != nil {
-			logger.Log(LevelWarning, fmt.Sprintf("WMI query failed: %s", q.Query))
+			logger.Log(LevelWarning, fmt.Sprintf("WMI PS query failed: %v", err))
 			continue
 		}
-		output.AddCollectedWMI(q.Artifact, q.Query, result)
+
+		// Если PowerShell вернул не массив, обернём в [ ... ]
+		if !json.Valid([]byte(raw)) {
+			logger.Log(LevelWarning, "WMI PS output is not valid JSON, skipping")
+			continue
+		}
+		if !strings.HasPrefix(raw, "[") {
+			raw = "[" + raw + "]"
+		}
+
+		// Сохраняем настоящий JSON‑массив
+		output.AddCollectedWMI(q.Artifact, q.Query, json.RawMessage(raw))
 	}
-}
-
-// addQuery добавляет новый WMI-запрос в список.
-func (w *WMIExecutor) addQuery(artifact, query, baseObject string) {
-	w.queries = append(w.queries, WMIQuery{
-		Artifact:   artifact,
-		Query:      query,
-		BaseObject: baseObject,
-	})
-}
-
-// RegisterSource пытается зарегистрировать источник данных для артефакта.
-// Если тип источника соответствует WMI-запросу, производится подстановка переменных
-// и добавление запроса в список, после чего возвращается true.
-// RegisterSource пытается зарегистрировать источник данных для артефакта.
-// Если тип источника соответствует WMI-запросу, выполняется подстановка переменных
-// и запрос добавляется в список.
-func (w *WMIExecutor) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
-	if artifactSource.TypeIndicator == TYPE_INDICATOR_WMI_QUERY {
-		// Извлекаем атрибут query из Attributes.
-		queryAttr, ok := artifactSource.Attributes["query"]
-		if !ok {
-			logger.Log(LevelError, "WMI query attribute not found")
-			return false
-		}
-		// Извлекаем base_object, если указан.
-		baseObject := ""
-		if bo, ok := artifactSource.Attributes["base_object"]; ok {
-			if s, ok := bo.(string); ok {
-				baseObject = s
-			}
-		}
-
-		// Обрабатываем значение атрибута query, которое может быть строкой или срезом.
-		switch q := queryAttr.(type) {
-		case string:
-			// Применяем подстановку переменных.
-			for _, sub := range variables.Substitute(q) {
-				// Преобразуем sub в строку без type assertion.
-				w.addQuery(artifactDefinition.Name, fmt.Sprintf("%v", sub), baseObject)
-			}
-		case []interface{}:
-			for _, qi := range q {
-				if qs, ok := qi.(string); ok {
-					for _, sub := range variables.Substitute(qs) {
-						w.addQuery(artifactDefinition.Name, fmt.Sprintf("%v", sub), baseObject)
-					}
-				} else {
-					logger.Log(LevelWarning, "WMI query attribute contains a non-string value")
-				}
-			}
-		default:
-			logger.Log(LevelError, "WMI query attribute has unsupported type")
-			return false
-		}
-		return true
-	}
-	return false
 }

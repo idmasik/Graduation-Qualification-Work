@@ -41,9 +41,6 @@ func (a *ArtifactDefinition) AppendSource(typeIndicator string, attributes map[s
 	if typeIndicator == "" {
 		return nil, FormatError{msg: "Missing type indicator."}
 	}
-
-	// Если потребуется расширенная логика создания источников, её можно
-	// реализовать, например, через вызов фабричного метода из реестра.
 	source := &Source{
 		TypeIndicator: typeIndicator,
 		Attributes:    attributes,

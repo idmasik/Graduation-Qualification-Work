@@ -17,7 +17,6 @@ type Config struct {
 	Include   string
 	Exclude   string
 	Directory []string
-	Library   bool
 	MaxSize   string
 	Output    string
 	SHA256    bool
@@ -41,7 +40,6 @@ func parseArgs() *Config {
 		Include:   *flags.include,
 		Exclude:   *flags.exclude,
 		Directory: splitArgs(*flags.directory),
-		Library:   *flags.library,
 		MaxSize:   *flags.maxsize,
 		Output:    *flags.output,
 		SHA256:    *flags.sha256,
@@ -69,7 +67,6 @@ type appFlags struct {
 	include   *string
 	exclude   *string
 	directory *string
-	library   *bool
 	maxsize   *string
 	output    *string
 	sha256    *bool
@@ -90,10 +87,6 @@ func initFlags(cfg *ini.File) *appFlags {
 	flags.directory = flag.String("directory",
 		section.Key("directory").MustString(""),
 		"Директории с определениями артефактов (через запятую)")
-
-	flags.library = flag.Bool("library",
-		section.Key("library").MustBool(false),
-		"Загружать определения из стандартной библиотеки артефактов (в дополнение к custom-директориям)")
 
 	flags.maxsize = flag.String("maxsize",
 		section.Key("maxsize").MustString(""),
@@ -138,13 +131,13 @@ func (r *ArtifactDefinitionsRegistry) ReadFromDirectory(reader ArtifactsReaderIn
 
 // getArtifactsRegistry создаёт реестр, загружая определения как из стандартной библиотеки,
 // так и из указанных пользователем директорий.
-func getArtifactsRegistry(useLibrary bool, paths []string) *ArtifactDefinitionsRegistry {
+func getArtifactsRegistry(paths []string) *ArtifactDefinitionsRegistry {
 	reader := NewYamlArtifactsReader()
 	registry := NewArtifactDefinitionsRegistry()
 
-	// Если не указаны пользовательские пути или требуется использовать библиотеку,
+	// Если не указаны пользовательские пути,
 	// читаем артефакты из стандартной директории (например, "<prefix>/share/artifacts").
-	if len(paths) == 0 || useLibrary {
+	if len(paths) == 0 {
 		exePath, err := os.Executable()
 		if err != nil {
 			logger.Log(LevelError, fmt.Sprintf("Ошибка получения пути исполняемого файла: %v", err))
@@ -276,7 +269,7 @@ func main() {
 	collector := NewCollector(platform, nil)
 
 	// Загружаем определения артефактов
-	registry := getArtifactsRegistry(config.Library, config.Directory)
+	registry := getArtifactsRegistry(config.Directory)
 
 	// Разворачиваем группы (если заданы)
 	includeArtifacts := resolveArtifactGroups(registry, config.Include)
@@ -284,7 +277,7 @@ func main() {
 
 	// Флаг, управляющий сбором реестровых источников (аналогично Python‑логике)
 	collectRegistry := false
-	if config.Include != "" || (len(config.Directory) > 0 && !config.Library) {
+	if config.Include != "" || (len(config.Directory) > 0) {
 		collectRegistry = true
 	}
 

@@ -237,7 +237,7 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	}
 	// Если имя файла начинается с "$MFT" или если файл относится к реестру (например, SYSTEM, SOFTWARE и т.п.),
 	// используем TSK для защищённых файлов.
-	if strings.HasPrefix(p.name, "$MFT") || isRegistryFile(p.name) {
+	if strings.HasPrefix(p.name, "$") || isRegistryFile(p.name) {
 		logger.Log(LevelInfo, fmt.Sprintf("Обнаружен защищённый файл: %s, переключаемся на TSK", p.path))
 		// Создаем TSKFileSystem (используем тот же том, что и у OSFileSystem)
 		tskFS, err := NewTSKFileSystem(fs.rootPath, fs.rootPath)
@@ -307,7 +307,7 @@ func (fs *OSFileSystem) readSystemFile(path string) ([][]byte, error) {
 }
 
 func isRegistryFile(name string) bool {
-	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "NTUSER.DAT"}
+	registryFiles := []string{"SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "NTUSER.DAT", "$LogFile"}
 	for _, reg := range registryFiles {
 		if strings.EqualFold(name, reg) {
 			return true
@@ -726,7 +726,7 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	var fs FileSystem
 	upperPath := strings.ToUpper(resolvedPath)
 	// Если путь содержит "$MFT" или "SYSTEM32/CONFIG", используем TSK для защищённых файлов.
-	if strings.Contains(upperPath, "$MFT") || strings.Contains(upperPath, "SYSTEM32/CONFIG") {
+	if strings.Contains(upperPath, "$") || strings.Contains(upperPath, "SYSTEM32/CONFIG") {
 		// Для обеих ОС проверяем, что файловая система поддерживается TSK.
 		// Для Unix можно сравнить в нижнем регистре, для Windows – оставляем как есть.
 		var fsSupported bool

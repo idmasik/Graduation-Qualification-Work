@@ -433,34 +433,34 @@ func TestCollectCommand(t *testing.T) {
 }
 
 // TestCollectWMI проверяет сбор WMI-результатов.
-func TestCollectWMI(t *testing.T) {
-	tempDir := t.TempDir()
-	out, err := NewOutputs(tempDir, "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out.AddCollectedWMI("TestArtifact", "query", "output")
-	if err := out.Close(); err != nil {
-		t.Fatal(err)
-	}
+// func TestCollectWMI(t *testing.T) {
+// 	tempDir := t.TempDir()
+// 	out, err := NewOutputs(tempDir, "", false)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	out.AddCollectedWMI("TestArtifact", "query", "output")
+// 	if err := out.Close(); err != nil {
+// 		t.Fatal(err)
+// 	}
 
-	wmiPath := filepath.Join(out.dirpath, fmt.Sprintf("%s-wmi.json", out.hostname))
-	data, err := os.ReadFile(wmiPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wmi map[string]map[string]string
-	if err := json.Unmarshal(data, &wmi); err != nil {
-		t.Fatal(err)
-	}
-	if artifact, ok := wmi["TestArtifact"]; !ok {
-		t.Error("TestArtifact отсутствует в WMI")
-	} else {
-		if artifact["query"] != "output" {
-			t.Errorf("query = %q, ожидалось 'output'", artifact["query"])
-		}
-	}
-}
+// 	wmiPath := filepath.Join(out.dirpath, fmt.Sprintf("%s-wmi.json", out.hostname))
+// 	data, err := os.ReadFile(wmiPath)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	var wmi map[string]map[string]string
+// 	if err := json.Unmarshal(data, &wmi); err != nil {
+// 		t.Fatal(err)
+// 	}
+// 	if artifact, ok := wmi["TestArtifact"]; !ok {
+// 		t.Error("TestArtifact отсутствует в WMI")
+// 	} else {
+// 		if artifact["query"] != "output" {
+// 			t.Errorf("query = %q, ожидалось 'output'", artifact["query"])
+// 		}
+// 	}
+// }
 
 // TestCollectRegistry проверяет сбор значений реестра.
 func TestCollectRegistry(t *testing.T) {

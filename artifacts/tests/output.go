@@ -59,7 +59,7 @@ type Outputs struct {
 	sha256  bool
 
 	commands map[string]map[string]string
-	wmi      map[string]map[string]string
+	wmi      map[string]map[string]json.RawMessage
 	registry map[string]map[string]map[string]interface{}
 
 	fileInfoFile *os.File
@@ -96,7 +96,7 @@ func NewOutputs(dirpath, maxsizeStr string, sha256 bool) (*Outputs, error) {
 		sha256:     sha256,
 		addedFiles: make(map[string]bool),
 		commands:   make(map[string]map[string]string),
-		wmi:        make(map[string]map[string]string),
+		wmi:        make(map[string]map[string]json.RawMessage),
 		registry:   make(map[string]map[string]map[string]interface{}),
 	}
 
@@ -235,10 +235,10 @@ func (o *Outputs) AddCollectedCommand(artifact, command string, output []byte) {
 }
 
 // AddCollectedWMI собирает результат WMI-запроса для указанного артефакта.
-func (o *Outputs) AddCollectedWMI(artifact, query, output string) {
+func (o *Outputs) AddCollectedWMI(artifact, query string, output json.RawMessage) {
 	logger.Log(LevelInfo, fmt.Sprintf("Collecting WMI query '%s' for artifact '%s'", query, artifact))
 	if o.wmi[artifact] == nil {
-		o.wmi[artifact] = make(map[string]string)
+		o.wmi[artifact] = make(map[string]json.RawMessage)
 	}
 	o.wmi[artifact][query] = output
 }
