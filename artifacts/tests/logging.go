@@ -52,4 +52,4 @@ func (l *Logger) Log(level int, msg string) {
 }
 
 // Создание глобального логгера
-var logger = NewLogger("fastir: ", LevelDebug)
+var logger = NewLogger("fast_dfar: ", LevelDebug)

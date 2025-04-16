@@ -84,17 +84,19 @@ func (afs *ArtifactFileSystem) AddPattern(artifact, pattern, sourceType string) 
 func (afs *ArtifactFileSystem) Collect(output *Outputs) {
 	for _, pat := range afs.patterns {
 		logger.Log(LevelDebug, fmt.Sprintf("Collecting pattern '%s' for artifact '%s'", pat.pattern, pat.artifact))
-		relativePattern := afs.fs.relativePath(pat.pattern)
-		genFuncs := afs.fs.parse(relativePattern)
+
+		rel := afs.fs.relativePath(pat.pattern)
 		gen := afs.fs.baseGenerator()
-		for _, gf := range genFuncs {
+		for _, gf := range afs.fs.parse(rel) {
 			gen = gf(gen)
 		}
-		for pathObj := range gen {
+
+		for po := range gen {
+			logger.Log(LevelInfo, fmt.Sprintf("Matched '%s' → %s", pat.pattern, po.path))
 			if pat.sourceType == FILE_INFO_TYPE {
-				output.AddCollectedFileInfo(pat.artifact, pathObj)
+				output.AddCollectedFileInfo(pat.artifact, po)
 			} else {
-				output.AddCollectedFile(pat.artifact, pathObj)
+				output.AddCollectedFile(pat.artifact, po)
 			}
 		}
 	}
@@ -126,30 +128,63 @@ func (fs *OSFileSystem) relativePath(fpath string) string {
 }
 
 func (fs *OSFileSystem) parse(pattern string) []GeneratorFunc {
+	// Если первый сегмент пути — NTFS‑спецфайл (начинается с '$'),
+	// сразу создаём PathObject через TSKFileSystem, минуя list_directory
+	parts := strings.Split(pattern, "/")
+	if len(parts) > 0 && strings.HasPrefix(parts[0], "$") {
+		return []GeneratorFunc{
+			func(source <-chan *PathObject) <-chan *PathObject {
+				out := make(chan *PathObject, 1)
+				// потребляем исходный элемент (корень)
+				<-source
+
+				fullPath := filepath.Join(fs.rootPath, filepath.FromSlash(pattern))
+				logger.Log(LevelInfo, fmt.Sprintf("TSK‑route: emitting protected file '%s' via TSK", fullPath))
+
+				tskFS, err := NewTSKFileSystem(fs.rootPath, fs.rootPath)
+				if err != nil {
+					logger.Log(LevelError, fmt.Sprintf("TSK‑route: cannot create TSKFileSystem: %v", err))
+					close(out)
+					return out
+				}
+
+				po := &PathObject{
+					filesystem: tskFS,
+					name:       filepath.Base(fullPath),
+					path:       fullPath,
+				}
+				out <- po
+				close(out)
+				return out
+			},
+		}
+	}
+
+	// Обычная логика разбора шаблона:
 	var generators []GeneratorFunc
 	items := strings.Split(pattern, "/")
 	for i, item := range items {
 		isDir := i < len(items)-1
-		if matches := pathRecursionRegex.FindStringSubmatch(item); len(matches) > 0 {
-			var maxDepth int
+		switch {
+		case pathRecursionRegex.MatchString(item):
+			matches := pathRecursionRegex.FindStringSubmatch(item)
+			maxDepth := -1
 			if matches[1] != "" {
 				if d, err := strconv.Atoi(matches[1]); err == nil {
 					maxDepth = d
-				} else {
-					maxDepth = -1
 				}
-			} else {
-				maxDepth = 3
 			}
 			generators = append(generators, func(source <-chan *PathObject) <-chan *PathObject {
 				return NewRecursionPathComponent(isDir, maxDepth, source).Generate()
 			})
-		} else if pathGlobRegex.MatchString(item) {
+
+		case pathGlobRegex.MatchString(item):
 			itemCopy := item
 			generators = append(generators, func(source <-chan *PathObject) <-chan *PathObject {
 				return NewGlobPathComponent(isDir, itemCopy, source).Generate()
 			})
-		} else {
+
+		default:
 			itemCopy := item
 			generators = append(generators, func(source <-chan *PathObject) <-chan *PathObject {
 				return NewRegularPathComponent(isDir, itemCopy, source).Generate()
@@ -185,6 +220,15 @@ func (fs *OSFileSystem) IsSymlink(p *PathObject) bool {
 	return err == nil && (info.Mode()&os.ModeSymlink != 0)
 }
 
+var allowed = map[string]bool{
+	"$MFT":     true,
+	"$MFTMirr": true,
+	"$LogFile": true,
+	"$Extend":  true,
+	"$UsnJrnl": true,
+}
+
+// OSFileSystem.ListDirectory — теперь явно разрешает системные файлы и логгирует фильтрацию
 func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
 	var objects []*PathObject
 	entries, err := os.ReadDir(p.path)
@@ -197,15 +241,25 @@ func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
 		return nil
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), "~$") ||
-			(strings.HasPrefix(entry.Name(), "$") && entry.Name() != "$MFT") {
+		name := entry.Name()
+		full := filepath.Join(p.path, name)
+
+		// Явно включаем NTFS‑потоки
+		switch name {
+		case "$MFT", "$MFTMirr", "$LogFile", "$Extend", "$UsnJrnl":
+			logger.Log(LevelDebug, fmt.Sprintf("Including NTFS system stream: %s", full))
+			objects = append(objects, &PathObject{filesystem: fs, name: name, path: full})
 			continue
 		}
-		objects = append(objects, &PathObject{
-			filesystem: fs,
-			name:       entry.Name(),
-			path:       filepath.Join(p.path, entry.Name()),
-		})
+
+		// Пропускаем временные Office-файлы
+		if strings.HasPrefix(name, "~$") {
+			logger.Log(LevelDebug, fmt.Sprintf("Skipping temp file: %s", full))
+			continue
+		}
+
+		// Всё прочее
+		objects = append(objects, &PathObject{filesystem: fs, name: name, path: full})
 	}
 	return objects
 }
@@ -231,28 +285,32 @@ func (fs *OSFileSystem) GetFullPath(fullpath string) *PathObject {
 	}
 }
 
+// OSFileSystem.ReadChunks — сначала ловим все защищённые файлы по "$" или реестру, затем уже проверяем IsFile
 func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
-	if !fs.IsFile(p) {
-		return nil, nil
-	}
-	// Если имя файла начинается с "$MFT" или если файл относится к реестру (например, SYSTEM, SOFTWARE и т.п.),
-	// используем TSK для защищённых файлов.
+	// 1) Любые NTFS-потоки и hive-файлы реестра — через TSK
 	if strings.HasPrefix(p.name, "$") || isRegistryFile(p.name) {
-		logger.Log(LevelInfo, fmt.Sprintf("Обнаружен защищённый файл: %s, переключаемся на TSK", p.path))
-		// Создаем TSKFileSystem (используем тот же том, что и у OSFileSystem)
+		logger.Log(LevelInfo, fmt.Sprintf("Protected file detected: %s, switching to TSK", p.path))
 		tskFS, err := NewTSKFileSystem(fs.rootPath, fs.rootPath)
 		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf("Ошибка создания TSKFileSystem для %s: %v", fs.rootPath, err))
+			logger.Log(LevelError, fmt.Sprintf("Failed to create TSKFileSystem for %s: %v", fs.rootPath, err))
 			return nil, err
 		}
 		return tskFS.ReadChunks(p)
 	}
-	// Обычное чтение файла
+
+	// 2) Если не файл — пропускаем
+	if !fs.IsFile(p) {
+		logger.Log(LevelDebug, fmt.Sprintf("Skipping non-file: %s", p.path))
+		return nil, nil
+	}
+
+	// 3) Обычное чтение через os
 	file, err := os.Open(p.path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+
 	var chunks [][]byte
 	buf := make([]byte, CHUNK_SIZE)
 	for {
@@ -666,57 +724,69 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 }
 
 // getFilesystem определяет, какую файловую систему использовать для указанного пути.
+// FileSystemManager.getFilesystem — теперь логгирует выбор TSK для любых защищённых файлов
+// FileSystemManager.getFilesystem — теперь логируем факт выбора TSK для любых защищённых путей с "$"
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
-	resolvedPaths := fsm.variables.Substitute(path)
-	if len(resolvedPaths) == 0 {
+	// Разрешаем переменные
+	resolvedMap := fsm.variables.Substitute(path)
+	if len(resolvedMap) == 0 {
 		return nil, fmt.Errorf("path resolution failed for: %s", path)
 	}
 	var resolvedPath string
-	for p := range resolvedPaths {
+	for p := range resolvedMap {
 		resolvedPath = p
 		break
 	}
 	resolvedPath = filepath.Clean(resolvedPath)
+
+	// Определяем volume
 	volume := filepath.VolumeName(resolvedPath)
 	if volume == "" {
 		volume = filepath.VolumeName(filepath.Clean(resolvedPath))
 	}
-	if fs, exists := fsm.filesystems[volume]; exists {
+	if fs, ok := fsm.filesystems[volume]; ok {
 		return fs, nil
 	}
+
+	// Ищем точку монтирования
 	mp, err := fsm.getMountPoint(resolvedPath)
 	if err != nil {
 		return nil, err
 	}
-	var fs FileSystem
-	upperPath := strings.ToUpper(resolvedPath)
-	// Если путь содержит "$MFT" или "SYSTEM32/CONFIG", используем TSK для защищённых файлов.
-	if strings.Contains(upperPath, "$") || strings.Contains(upperPath, "SYSTEM32/CONFIG") {
-		// Для обеих ОС проверяем, что файловая система поддерживается TSK.
-		// Для Unix можно сравнить в нижнем регистре, для Windows – оставляем как есть.
-		var fsSupported bool
+
+	var chosenFS FileSystem
+	up := strings.ToUpper(resolvedPath)
+
+	// Любые пути с "$" или системные hive-файлы — через TSK
+	// Принудительно через TSK для любых потоков NTFS и hive-файлов
+	if strings.Contains(up, "$LOGFILE") || strings.Contains(up, "$EXTEND") ||
+		strings.Contains(up, "$MFT") || strings.Contains(up, "SYSTEM32/CONFIG") {
+		supported := false
 		if runtime.GOOS == "windows" {
-			fsSupported = TSK_FILESYSTEMS[mp.Fstype]
+			supported = TSK_FILESYSTEMS[mp.Fstype]
 		} else {
-			fsSupported = TSK_FILESYSTEMS[strings.ToLower(mp.Fstype)]
+			supported = TSK_FILESYSTEMS[strings.ToLower(mp.Fstype)]
 		}
-		if fsSupported {
+		if supported {
 			tskFS, err := NewTSKFileSystem(mp.Device, mp.Mountpoint)
 			if err != nil {
-				logger.Log(LevelError, fmt.Sprintf("Не удалось создать TSKFileSystem для тома %s: %v", mp.Mountpoint, err))
+				logger.Log(LevelError, fmt.Sprintf("Cannot create TSKFileSystem for %s: %v", mp.Mountpoint, err))
 			} else {
-				logger.Log(LevelInfo, fmt.Sprintf("Используем TSKFileSystem для защищённых файлов: %s", resolvedPath))
-				fs = tskFS
+				logger.Log(LevelInfo, fmt.Sprintf("TSK selected for protected path %s on %s", resolvedPath, mp.Mountpoint))
+				chosenFS = tskFS
 			}
 		}
 	}
-	if fs == nil {
+
+	// По умолчанию — OSFileSystem
+	if chosenFS == nil {
 		osfs := NewOSFileSystem(volume + string(filepath.Separator))
-		logger.Log(LevelInfo, fmt.Sprintf("Используем OSFileSystem для %s", resolvedPath))
-		fs = osfs
+		logger.Log(LevelInfo, fmt.Sprintf("Using OSFileSystem for %s", resolvedPath))
+		chosenFS = osfs
 	}
-	fsm.filesystems[volume] = fs
-	return fs, nil
+
+	fsm.filesystems[volume] = chosenFS
+	return chosenFS, nil
 }
 
 // RegisterSource регистрирует источник артефакта в файловой системе, если он поддерживается.
