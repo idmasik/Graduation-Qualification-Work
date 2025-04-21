@@ -92,7 +92,7 @@ func (afs *ArtifactFileSystem) Collect(output *Outputs) {
 		}
 
 		for po := range gen {
-			logger.Log(LevelInfo, fmt.Sprintf("Matched '%s' → %s", pat.pattern, po.path))
+			//logger.Log(LevelInfo, fmt.Sprintf("Matched '%s' → %s", pat.pattern, po.path))
 			if pat.sourceType == FILE_INFO_TYPE {
 				output.AddCollectedFileInfo(pat.artifact, po)
 			} else {
@@ -790,7 +790,12 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 }
 
 // RegisterSource регистрирует источник артефакта в файловой системе, если он поддерживается.
-func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool {
+// FileSystemManager.RegisterSource — обновлённая версия для единоразового определения ФС по абсолютному пути
+func (fsm *FileSystemManager) RegisterSource(
+	artifactDefinition *ArtifactDefinition,
+	artifactSource *Source,
+	variables *HostVariables,
+) bool {
 	supported := false
 	if artifactSource.TypeIndicator == TYPE_INDICATOR_FILE ||
 		artifactSource.TypeIndicator == TYPE_INDICATOR_PATH ||
@@ -808,46 +813,34 @@ func (fsm *FileSystemManager) RegisterSource(artifactDefinition *ArtifactDefinit
 			logger.Log(LevelError, "Неверный или пустой список путей в источнике")
 			return false
 		}
+
 		for _, patternStr := range pathsSlice {
-			// Унифицируем разделители для Windows.
+			// нормализуем разделители
 			patternStr = strings.ReplaceAll(patternStr, "\\", "/")
 			substitutedMap := variables.Substitute(patternStr)
 			for resPath := range substitutedMap {
 				resolvedPath := strings.ReplaceAll(resPath, "\\", "/")
+
+				// для TYPE_INDICATOR_PATH добавляем рекурсивный суффикс
 				if artifactSource.TypeIndicator == TYPE_INDICATOR_PATH && !strings.HasSuffix(resolvedPath, "*") {
 					resolvedPath = resolvedPath + string(filepath.Separator) + "**-1"
 				}
-				// Для Windows проверяем корректность шаблона.
-				if runtime.GOOS == "windows" && !isValidWindowsPattern(resolvedPath) {
+
+				// единоразово выбираем файловую систему по пути
+				fs := fsm.getFilesystemOrError(resolvedPath)
+				if fs == nil {
 					continue
 				}
-				if strings.HasPrefix(resolvedPath, "/") {
-					for _, mp := range fsm.mountPoints {
-						// Для Unix приводим Fstype к нижнему регистру, для Windows оставляем как есть.
-						var fsSupported bool
-						if runtime.GOOS == "windows" {
-							fsSupported = TSK_FILESYSTEMS[mp.Fstype]
-						} else {
-							fsSupported = TSK_FILESYSTEMS[strings.ToLower(mp.Fstype)]
-						}
-						if fsSupported {
-							extendedPattern := filepath.Join(mp.Mountpoint, strings.TrimPrefix(resolvedPath, "/"))
-							fs, err := fsm.getFilesystem(extendedPattern)
-							if err == nil {
-								fs.AddPattern(artifactDefinition.Name, extendedPattern, artifactSource.TypeIndicator)
-							} else {
-								logger.Log(LevelError, fmt.Sprintf("Ошибка получения файловой системы для шаблона %s: %v", extendedPattern, err))
-							}
-						}
-					}
-				} else {
-					fs, err := fsm.getFilesystem(resolvedPath)
-					if err == nil {
-						fs.AddPattern(artifactDefinition.Name, resolvedPath, artifactSource.TypeIndicator)
-					} else {
-						logger.Log(LevelError, fmt.Sprintf("Ошибка получения файловой системы для шаблона %s: %v", resolvedPath, err))
-					}
+
+				// логируем факт регистрации абсолютного пути
+				if strings.HasPrefix(resolvedPath, string(filepath.Separator)) {
+					logger.Log(LevelDebug,
+						fmt.Sprintf("Registering absolute path '%s' on FS %T for artifact '%s'",
+							resolvedPath, fs, artifactDefinition.Name))
 				}
+
+				// добавляем шаблон на найденную ФС
+				fs.AddPattern(artifactDefinition.Name, resolvedPath, artifactSource.TypeIndicator)
 			}
 		}
 	}

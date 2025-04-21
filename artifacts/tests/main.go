@@ -231,7 +231,7 @@ func getArtifactsToCollect(registry *ArtifactDefinitionsRegistry, include map[st
 // ─── Константы и переменные ─────────────────────────────────────────────────────
 
 var BLACKLIST = map[string]bool{
-	"WMILoginUsers":         true,
+	"WMILoginUsers":         false,
 	"WMIUsers":              true,
 	"WMIVolumeShadowCopies": true,
 }
@@ -279,6 +279,10 @@ func main() {
 	collectRegistry := false
 	if config.Include != "" || (len(config.Directory) > 0) {
 		collectRegistry = true
+		logger.Log(LevelInfo, fmt.Sprintf("Сбор реестровых источников активирован (Include: '%s', Directory: %v)",
+			config.Include, config.Directory))
+	} else {
+		logger.Log(LevelInfo, "Сбор реестровых источников отключен: не заданы Include-правила и директории для сканирования")
 	}
 
 	// Фильтруем артефакты и регистрируем источники в коллекторе.
