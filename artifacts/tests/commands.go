@@ -1,8 +1,8 @@
+// commands.go
 package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -43,12 +43,18 @@ func (c *CommandExecutor) Collect(output *Outputs) {
 	for _, cm := range c.commands {
 		full := append([]string{cm.Cmd}, cm.Args...)
 		fullCmdStr := strings.Join(full, " ")
-		logger.Log(LevelDebug, "Executing: "+fullCmdStr)
+		// Если на Windows и команда выглядит как Unix-путь — пропускаем
+		if runtime.GOOS == "windows" && strings.Contains(cm.Cmd, "/") {
+			logger.Log(LevelDebug,
+				fmt.Sprintf("Skipping Unix-style command on Windows: %s", fullCmdStr))
+			continue
+		}
 
-		// Выполняем команду
+		logger.Log(LevelDebug, "Executing: "+fullCmdStr)
 		var raw []byte
 		var err error
 		if runtime.GOOS == "windows" {
+			// через cmd.exe, чтобы поддержать внутренние команды
 			ps := "chcp 65001>nul && " + fullCmdStr
 			raw, err = exec.Command("cmd", "/C", ps).CombinedOutput()
 		} else {
@@ -76,22 +82,11 @@ func (c *CommandExecutor) Collect(output *Outputs) {
 			}
 		}
 
-		// Декодируем вывод в UTF-8
 		decoded := decodeOutput(raw)
-
-		// Для firewall выводим только нужные поля
-		var final string
-		if cm.Artifact == "WindowsFirewallEnabledRules" {
-			final = parseFirewallRules(decoded)
-		} else {
-			final = decoded
-		}
-
-		if strings.TrimSpace(final) == "" {
+		if strings.TrimSpace(decoded) == "" {
 			continue
 		}
-
-		output.AddCollectedCommand(cm.Artifact, fullCmdStr, []byte(final))
+		output.AddCollectedCommand(cm.Artifact, fullCmdStr, []byte(decoded))
 	}
 }
 
@@ -117,46 +112,27 @@ func decodeOutput(raw []byte) string {
 	return string(raw)
 }
 
-// parseFirewallRules извлекает из netsh advfirewall лишь ключевые поля
-func parseFirewallRules(s string) string {
-	rules := []map[string]string{}
-	entries := strings.Split(s, "\r\n\r\n")
-	keys := map[string]string{
-		"Rule Name:":      "RuleName",
-		"Enabled:":        "Enabled",
-		"Direction:":      "Direction",
-		"Profiles:":       "Profiles",
-		"Grouping:":       "Grouping",
-		"LocalIP:":        "LocalIP",
-		"RemoteIP:":       "RemoteIP",
-		"Protocol:":       "Protocol",
-		"LocalPort:":      "LocalPort",
-		"RemotePort:":     "RemotePort",
-		"Edge traversal:": "EdgeTraversal",
-		"Action:":         "Action",
-	}
-	for _, entry := range entries {
-		m := make(map[string]string)
-		lines := strings.Split(entry, "\r\n")
-		for _, line := range lines {
-			for prefix, field := range keys {
-				if strings.HasPrefix(line, prefix) {
-					m[field] = strings.TrimSpace(line[len(prefix):])
-				}
-			}
-		}
-		if len(m) > 0 {
-			rules = append(rules, m)
-		}
-	}
-	out, _ := json.MarshalIndent(rules, "", "  ")
-	return string(out)
-}
-
 func (c *CommandExecutor) RegisterSource(def *ArtifactDefinition, src *Source, vars *HostVariables) bool {
 	if src.TypeIndicator != TYPE_INDICATOR_COMMAND {
 		return false
 	}
+	// проверим supported_os у source
+	if v, ok := src.Attributes["supported_os"].([]interface{}); ok {
+		supported := false
+		for _, o := range v {
+			if osStr, ok := o.(string); ok && strings.EqualFold(osStr, runtime.GOOS) {
+				supported = true
+				break
+			}
+		}
+		if !supported {
+			logger.Log(LevelDebug,
+				fmt.Sprintf("Skipping command for artifact '%s': OS %s not in %v",
+					def.Name, runtime.GOOS, v))
+			return true
+		}
+	}
+
 	cmd, ok := src.Attributes["cmd"].(string)
 	if !ok {
 		return false

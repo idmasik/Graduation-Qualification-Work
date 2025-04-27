@@ -10,12 +10,22 @@ import (
 	"strings"
 )
 
-// wmiQueryPS выполняет WMI‑запрос через PowerShell и возвращает JSON‑строку.
 func wmiQueryPS(query, namespace string) (string, error) {
-	ps := fmt.Sprintf(
-		"Get-CimInstance -Namespace '%s' -Query \"%s\" | ConvertTo-Json -Depth 3",
-		namespace, query,
-	)
+	var ps string
+	query = strings.TrimSpace(query)
+
+	if strings.HasPrefix(strings.ToUpper(query), "SELECT ") {
+		ps = fmt.Sprintf(
+			"Get-CimInstance -Namespace '%s' -Query \"%s\" | ConvertTo-Json -Depth 3",
+			namespace, query,
+		)
+	} else {
+		ps = fmt.Sprintf(
+			"Get-CimInstance -Namespace '%s' -ClassName '%s' | ConvertTo-Json -Depth 3",
+			namespace, query,
+		)
+	}
+
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -48,10 +58,18 @@ func (w *WMIExecutor) RegisterSource(def *ArtifactDefinition, src *Source, vars 
 	if !ok {
 		return false
 	}
+	qRaw = strings.TrimSpace(qRaw)
+	if qRaw == "" || strings.HasPrefix(qRaw, "{") {
+		logger.Log(LevelWarning,
+			fmt.Sprintf("Invalid or empty WMI query '%s' for artifact '%s', skipping", qRaw, def.Name))
+		return true
+	}
+
 	base := ""
 	if bo, ok := src.Attributes["base_object"].(string); ok {
 		base = bo
 	}
+
 	if strings.Contains(qRaw, "%%") {
 		for _, sub := range vars.Substitute(qRaw) {
 			w.addQuery(def.Name, fmt.Sprintf("%v", sub), base)
@@ -65,26 +83,56 @@ func (w *WMIExecutor) RegisterSource(def *ArtifactDefinition, src *Source, vars 
 func (w *WMIExecutor) Collect(output *Outputs) {
 	for _, q := range w.queries {
 		ns := "root\\cimv2"
-		if bo := strings.TrimPrefix(q.BaseObject, "winmgmts:"); bo != "" {
-			ns = strings.Trim(bo, `\ `)
+
+		if q.BaseObject != "" {
+			baseObj := q.BaseObject
+			baseObj = strings.TrimPrefix(baseObj, "winmgmts:")
+			baseObj = strings.TrimPrefix(baseObj, `\\.\`)
+			baseObj = strings.Trim(baseObj, `\ `)
+			if baseObj != "" {
+				ns = baseObj
+			}
 		}
 
-		raw, err := wmiQueryPS(q.Query, ns)
-		if err != nil {
-			logger.Log(LevelWarning, fmt.Sprintf("WMI PS query failed: %v", err))
+		query := strings.TrimSpace(q.Query)
+		if query == "" || query == "{}" {
+			logger.Log(LevelWarning,
+				fmt.Sprintf("Empty or invalid WMI query for artifact '%s', skipping", q.Artifact))
 			continue
 		}
 
-		// Если PowerShell вернул не массив, обернём в [ ... ]
+		execQuery := func(namespace string) (string, error) {
+			logger.Log(LevelDebug,
+				fmt.Sprintf("Executing WMI query for '%s' in namespace '%s': %s",
+					q.Artifact, namespace, query))
+			return wmiQueryPS(query, namespace)
+		}
+
+		raw, err := execQuery(ns)
+
+		// Повторная попытка, если ошибка пространства имен и класс MSFT_*
+		if err != nil && strings.Contains(query, "MSFT_") {
+			retryNs := "root\\StandardCimv2"
+			logger.Log(LevelInfo,
+				fmt.Sprintf("Retrying WMI query for '%s' in namespace '%s'", q.Artifact, retryNs))
+			raw, err = execQuery(retryNs)
+		}
+
+		if err != nil {
+			logger.Log(LevelWarning,
+				fmt.Sprintf("WMI PS query ultimately failed for artifact '%s': %v", q.Artifact, err))
+			continue
+		}
+
 		if !json.Valid([]byte(raw)) {
-			logger.Log(LevelWarning, "WMI PS output is not valid JSON, skipping")
+			logger.Log(LevelWarning,
+				fmt.Sprintf("WMI PS output is not valid JSON for artifact '%s', skipping", q.Artifact))
 			continue
 		}
 		if !strings.HasPrefix(raw, "[") {
 			raw = "[" + raw + "]"
 		}
 
-		// Сохраняем настоящий JSON‑массив
-		output.AddCollectedWMI(q.Artifact, q.Query, json.RawMessage(raw))
+		output.AddCollectedWMI(q.Artifact, query, json.RawMessage(raw))
 	}
 }

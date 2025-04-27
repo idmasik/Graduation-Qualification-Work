@@ -727,6 +727,13 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 // FileSystemManager.getFilesystem — теперь логгирует выбор TSK для любых защищённых файлов
 // FileSystemManager.getFilesystem — теперь логируем факт выбора TSK для любых защищённых путей с "$"
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
+	// Normalize to forward slashes
+	p := filepath.ToSlash(path)
+	// Skip Unix-style absolute patterns on Windows
+	if runtime.GOOS == "windows" && strings.HasPrefix(p, "/") {
+		//logger.Log(LevelDebug, fmt.Sprintf("Skipping Unix-style pattern on Windows: %s", p))
+		return nil, nil
+	}
 	// Разрешаем переменные
 	resolvedMap := fsm.variables.Substitute(path)
 	if len(resolvedMap) == 0 {
