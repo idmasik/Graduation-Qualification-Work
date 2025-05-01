@@ -220,14 +220,6 @@ func (fs *OSFileSystem) IsSymlink(p *PathObject) bool {
 	return err == nil && (info.Mode()&os.ModeSymlink != 0)
 }
 
-var allowed = map[string]bool{
-	"$MFT":     true,
-	"$MFTMirr": true,
-	"$LogFile": true,
-	"$Extend":  true,
-	"$UsnJrnl": true,
-}
-
 // OSFileSystem.ListDirectory — теперь явно разрешает системные файлы и логгирует фильтрацию
 func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
 	var objects []*PathObject
@@ -852,15 +844,6 @@ func (fsm *FileSystemManager) RegisterSource(
 		}
 	}
 	return supported
-}
-
-// isValidWindowsPattern проверяет корректность шаблона пути для Windows.
-func isValidWindowsPattern(pattern string) bool {
-	if runtime.GOOS != "windows" {
-		return true
-	}
-	matched, _ := regexp.MatchString(`^[A-Za-z]:[\\/].+`, pattern)
-	return matched
 }
 
 // BatchReadChunks принимает список путей (для одного тома) и возвращает для каждого путь список чанков.
