@@ -92,8 +92,8 @@ func (afs *ArtifactFileSystem) Collect(output *Outputs) {
 		}
 
 		for po := range gen {
-			//logger.Log(LevelInfo, fmt.Sprintf("Matched '%s' → %s", pat.pattern, po.path))
-			if pat.sourceType == FILE_INFO_TYPE {
+			if pat.sourceType == FILE_INFO_TYPE || output.sha256 {
+				output.AddCollectedFile(pat.artifact, po)
 				output.AddCollectedFileInfo(pat.artifact, po)
 			} else {
 				output.AddCollectedFile(pat.artifact, po)
