@@ -13,8 +13,10 @@ require (
 	github.com/Codehardt/mmap-go v1.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
+	github.com/forensicanalysis/fslib v0.15.2 // indirect
 	github.com/fsnotify/fsnotify v1.4.7 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/magiconair/properties v1.8.1 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
@@ -30,6 +32,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mozilla.org/pkcs7 v0.0.0-20210826202110-33d05740a352 // indirect
 	gopkg.in/yaml.v2 v2.3.0 // indirect
+	www.velocidex.com/golang/go-ntfs v0.1.1 // indirect
 )
 
 require (
