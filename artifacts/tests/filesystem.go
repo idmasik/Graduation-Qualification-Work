@@ -615,21 +615,6 @@ func (fsm *FileSystemManager) RegisterSource(
 	return supported
 }
 
-// splitIntoChunks разбивает данные на чанки по CHUNK_SIZE.
-func splitIntoChunks(data []byte) [][]byte {
-	var chunks [][]byte
-	for i := 0; i < len(data); i += CHUNK_SIZE {
-		end := i + CHUNK_SIZE
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := make([]byte, end-i)
-		copy(chunk, data[i:end])
-		chunks = append(chunks, chunk)
-	}
-	return chunks
-}
-
 // NTFSFileSystem реализует FileSystem через forensicanalysis/fslib/ntfs
 type NTFSFileSystem struct {
 	volHandle *os.File
