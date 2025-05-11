@@ -17,6 +17,7 @@ type Config struct {
 	Include   string
 	Exclude   string
 	Directory []string
+	Registry  bool
 	MaxSize   string
 	Output    string
 	SHA256    bool
@@ -40,6 +41,7 @@ func parseArgs() *Config {
 		Include:   *flags.include,
 		Exclude:   *flags.exclude,
 		Directory: splitArgs(*flags.directory),
+		Registry:  *flags.registry,
 		MaxSize:   *flags.maxsize,
 		Output:    *flags.output,
 		SHA256:    *flags.sha256,
@@ -67,6 +69,7 @@ type appFlags struct {
 	include   *string
 	exclude   *string
 	directory *string
+	registry  *bool
 	maxsize   *string
 	output    *string
 	sha256    *bool
@@ -87,6 +90,10 @@ func initFlags(cfg *ini.File) *appFlags {
 	flags.directory = flag.String("directory",
 		section.Key("directory").MustString(""),
 		"Директории с определениями артефактов (через запятую)")
+
+	flags.registry = flag.Bool("registry",
+		section.Key("registry").MustBool(false),
+		"Флаг, управляющий сбором реестровых источников (на Windows) ")
 
 	flags.maxsize = flag.String("maxsize",
 		section.Key("maxsize").MustString(""),
@@ -275,18 +282,15 @@ func main() {
 	includeArtifacts := resolveArtifactGroups(registry, config.Include)
 	excludeArtifacts := resolveArtifactGroups(registry, config.Exclude)
 
-	// Флаг, управляющий сбором реестровых источников (аналогично Python‑логике)
-	collectRegistry := false
-	if config.Include != "" || (len(config.Directory) > 0) {
-		collectRegistry = true
-		logger.Log(LevelInfo, fmt.Sprintf("Сбор реестровых источников активирован (Include: '%s', Directory: %v)",
-			config.Include, config.Directory))
+	// Флаг, управляющий сбором реестровых источников
+	if (platform == "Windows") && (config.Registry == true) {
+		logger.Log(LevelInfo, "Сбор реестровых источников активирован")
 	} else {
-		logger.Log(LevelInfo, "Сбор реестровых источников отключен: не заданы Include-правила и директории для сканирования")
+		logger.Log(LevelInfo, "Сбор реестровых источников отключен: флаг Registry не задан")
 	}
 
 	// Фильтруем артефакты и регистрируем источники в коллекторе.
-	for _, pair := range getArtifactsToCollect(registry, includeArtifacts, excludeArtifacts, platform, collectRegistry) {
+	for _, pair := range getArtifactsToCollect(registry, includeArtifacts, excludeArtifacts, platform, config.Registry) {
 		collector.RegisterSource(pair.definition, pair.source)
 	}
 
