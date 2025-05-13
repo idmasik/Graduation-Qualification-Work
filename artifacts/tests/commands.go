@@ -1,4 +1,3 @@
-// commands.go
 package main
 
 import (
@@ -92,7 +91,6 @@ func (c *CommandExecutor) Collect(output *Outputs) {
 
 // decodeOutput приводит байты к UTF-8
 func decodeOutput(raw []byte) string {
-	// BOM UTF-16 LE?
 	if len(raw) >= 2 && raw[0] == 0xFF && raw[1] == 0xFE {
 		dec := unicode.UTF16(unicode.LittleEndian, unicode.ExpectBOM).NewDecoder()
 		rdr := transform.NewReader(bytes.NewReader(raw), dec)

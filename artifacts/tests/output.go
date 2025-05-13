@@ -64,13 +64,17 @@ type Outputs struct {
 
 	fileInfoFile *os.File
 	logFile      *os.File
+
+	analysis      bool
+	apiKey        string
+	analysisQueue *AnalysisQueue
 }
 
 // NewOutputs создаёт новый экземпляр Outputs.
 // dirpath – путь к каталогу для результатов,
 // maxsizeStr – максимально допустимый размер файла (например, "50M"),
 // sha256 – вычислять ли SHA-256 для собираемых файлов.
-func NewOutputs(dirpath, maxsizeStr string, sha256 bool) (*Outputs, error) {
+func NewOutputs(dirpath, maxsizeStr string, sha256 bool, analysis bool, apiKey string) (*Outputs, error) {
 	maxsize, err := parseHumanSize(maxsizeStr)
 	if err != nil {
 		return nil, err
@@ -89,15 +93,31 @@ func NewOutputs(dirpath, maxsizeStr string, sha256 bool) (*Outputs, error) {
 	// Устанавливаем переменную окружения для COMMAND артефактов.
 	os.Setenv("FAOUTPUTDIR", finalDir)
 
+	var aq *AnalysisQueue
+	if analysis && apiKey != "" {
+		client, err := NewClient(apiKey)
+		if err != nil {
+			return nil, err
+		}
+		resultsPath := filepath.Join(finalDir, fmt.Sprintf("%s-analyse.jsonl", hostname))
+		aq, err = NewQueue(client, 100, 5, resultsPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	o := &Outputs{
-		dirpath:    finalDir,
-		hostname:   hostname,
-		maxsize:    maxsize,
-		sha256:     sha256,
-		addedFiles: make(map[string]bool),
-		commands:   make(map[string]map[string]string),
-		wmi:        make(map[string]map[string]json.RawMessage),
-		registry:   make(map[string]map[string]map[string]interface{}),
+		dirpath:       finalDir,
+		hostname:      hostname,
+		maxsize:       maxsize,
+		sha256:        sha256,
+		addedFiles:    make(map[string]bool),
+		commands:      make(map[string]map[string]string),
+		wmi:           make(map[string]map[string]json.RawMessage),
+		registry:      make(map[string]map[string]map[string]interface{}),
+		analysis:      analysis,
+		apiKey:        apiKey,
+		analysisQueue: aq,
 	}
 
 	if err := o.setupLogging(); err != nil {
@@ -137,7 +157,6 @@ func (o *Outputs) AddCollectedFileInfo(artifact string, pathObject FilePathObjec
 		if fileInfo == nil {
 			return fmt.Errorf("failed to compute file info")
 		}
-		// Добавляем метку артефакта.
 		fileInfo["labels"] = map[string]string{"artifact": artifact}
 
 		b, err := json.Marshal(fileInfo)
@@ -146,6 +165,9 @@ func (o *Outputs) AddCollectedFileInfo(artifact string, pathObject FilePathObjec
 		}
 		if _, err := o.fileInfoFile.Write(append(b, '\n')); err != nil {
 			return err
+		}
+		if o.analysisQueue != nil {
+			o.analysisQueue.Enqueue(fileInfo)
 		}
 	}
 	return nil

@@ -1,4 +1,3 @@
-// collector.go
 package main
 
 import (
@@ -12,8 +11,7 @@ import (
 type AbstractCollector interface {
 	// Collect выполняет сбор данных и записывает результат в output.
 	Collect(output *Outputs)
-	// RegisterSource пытается зарегистрировать источник для данного определения артефакта.
-	// Если источник поддерживается, возвращается true.
+	// RegisterSource пытается зарегистрировать источник для данного определения артефакта.(Если источник поддерживается, возвращается true)
 	RegisterSource(artifactDefinition *ArtifactDefinition, artifactSource *Source, variables *HostVariables) bool
 }
 
@@ -27,8 +25,7 @@ type Collector struct {
 
 // NewCollector создаёт новый Collector для указанной платформы,
 // при этом переменные хоста инициализируются независимо от платформы.
-// NewCollector создаёт новый Collector с выбором функции инициализации переменных и сборщиков,
-// зависящих от ОС.
+// NewCollector создаёт новый Collector с выбором функции инициализации переменных и сборщиков,зависящих от ОС.
 func NewCollector(platform string, collectors []AbstractCollector) *Collector {
 	var initFunc func(*HostVariables)
 	// Выбираем функцию инициализации переменных в зависимости от платформы.
@@ -100,9 +97,6 @@ func (c *Collector) RegisterSource(artifactDefinition *ArtifactDefinition, artif
 
 // Collect выполняет сбор артефактов со всех источников и закрывает output.
 func (c *Collector) Collect(output *Outputs) {
-	logger.Log(LevelProgress,
-		fmt.Sprintf("Collecting artifacts from %d sources ...", c.sources))
-
 	for _, collector := range c.collectors {
 		collector.Collect(output)
 	}

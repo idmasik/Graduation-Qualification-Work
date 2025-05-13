@@ -82,7 +82,7 @@ func TestNormalizeFilepath(t *testing.T) {
 // TestLogging проверяет, что лог-сообщение записывается в файл.
 func TestLogging(t *testing.T) {
 	tempDir := t.TempDir()
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestCollectFileInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestCollectPEFileInfo(t *testing.T) {
 		t.Skip("Файл MSVCR71.dll не найден – пропускаем тест")
 	}
 
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestCollectFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestCollectFileSizeFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := NewOutputs(tempDir, "15", false)
+	out, err := NewOutputs(tempDir, "15", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +405,7 @@ func TestCollectFileSizeFilter(t *testing.T) {
 // TestCollectCommand проверяет сбор результата команды.
 func TestCollectCommand(t *testing.T) {
 	tempDir := t.TempDir()
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestCollectCommand(t *testing.T) {
 // TestCollectRegistry проверяет сбор значений реестра.
 func TestCollectRegistry(t *testing.T) {
 	tempDir := t.TempDir()
-	out, err := NewOutputs(tempDir, "", false)
+	out, err := NewOutputs(tempDir, "", false, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

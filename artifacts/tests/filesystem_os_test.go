@@ -66,7 +66,7 @@ func checkSuffixes(t *testing.T, expected, collected []string) {
 func createTestOutputs(t *testing.T) *Outputs {
 	t.Helper()
 	tempDir := t.TempDir()
-	outputs, err := NewOutputs(tempDir, "0", false)
+	outputs, err := NewOutputs(tempDir, "0", false, false, "")
 	if err != nil {
 		t.Fatalf("Не удалось создать Outputs: %v", err)
 	}

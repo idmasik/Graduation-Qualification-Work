@@ -53,7 +53,7 @@ func (f *FileInfo) Compute() map[string]interface{} {
 
 	chunks, err := f.po.ReadChunks()
 	if err != nil {
-		logger.Log(LevelError, "ReadChunks error: "+err.Error())
+		//logger.Log(LevelError, "ReadChunks error: "+err.Error())
 		return nil
 	}
 
@@ -63,13 +63,13 @@ func (f *FileInfo) Compute() map[string]interface{} {
 		f.sha256Hash.Write(c)
 		if i == 0 {
 			f.mimeType = http.DetectContentType(c)
-			logger.Log(LevelDebug, "Detected MIME type: "+f.mimeType)
+			//logger.Log(LevelDebug, "Detected MIME type: "+f.mimeType)
 		}
 	}
 
 	// Если MZ и размер подходит — буферизуем для PE
 	if len(chunks) > 0 && len(chunks[0]) >= 2 && chunks[0][0] == 'M' && chunks[0][1] == 'Z' {
-		logger.Log(LevelDebug, "PE signature detected, buffering content for PE parsing")
+		//logger.Log(LevelDebug, "PE signature detected, buffering content for PE parsing")
 		f.mimeType = "application/x-msdownload"
 		if f.size < MAX_PE_SIZE {
 			f.content = bytes.Join(chunks, nil)
@@ -95,7 +95,7 @@ func (f *FileInfo) buildResult() map[string]interface{} {
 
 	if len(f.content) > 0 {
 		if err := f.parsePE(); err != nil {
-			logger.Log(LevelWarning, "PE parse error: "+err.Error())
+			logger.Log(LevelError, "PE parse error: "+err.Error())
 		}
 	}
 
@@ -103,7 +103,7 @@ func (f *FileInfo) buildResult() map[string]interface{} {
 }
 
 func (f *FileInfo) parsePE() error {
-	logger.Log(LevelDebug, "Parsing PE headers with debug/pe")
+	//logger.Log(LevelDebug, "Parsing PE headers with debug/pe")
 	r := bytes.NewReader(f.content)
 	pf, err := pe.NewFile(r)
 	if err != nil {
@@ -113,18 +113,18 @@ func (f *FileInfo) parsePE() error {
 
 	// compilation timestamp
 	ts := time.Unix(int64(pf.FileHeader.TimeDateStamp), 0).UTC().Format("2006-01-02T15:04:05")
-	logger.Log(LevelInfo, "PE compilation timestamp: "+ts)
+	//logger.Log(LevelInfo, "PE compilation timestamp: "+ts)
 	f.addProp("pe", "compilation", ts)
 
-	// правильный ImpHash через github.com/Codehardt/go-pefile
-	logger.Log(LevelDebug, "Computing ImpHash via go-pefile GetImpHash()")
+	// ImpHash через github.com/Codehardt/go-pefile
+	//logger.Log(LevelDebug, "Computing ImpHash via go-pefile GetImpHash()")
 	pf2, err := pefile.NewPEFile(f.po.GetPath())
 	if err != nil {
 		logger.Log(LevelWarning, fmt.Sprintf("go-pefile NewPEFile failed: %v", err))
 	} else {
 		defer pf2.Close()
 		imp := pf2.GetImpHash()
-		logger.Log(LevelInfo, "PE imphash: "+imp)
+		//logger.Log(LevelInfo, "PE imphash: "+imp)
 		f.addProp("pe", "imphash", imp)
 	}
 

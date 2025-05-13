@@ -1,7 +1,6 @@
 package main
 
 // ArtifactDefinition представляет полное определение артефакта
-
 type ArtifactDefinition struct {
 	Name        string
 	Aliases     []string
@@ -29,14 +28,6 @@ func NewArtifactDefinition(name string, aliases []string, description string) *A
 }
 
 // AppendSource добавляет новый источник к определению артефакта.
-//
-// Если typeIndicator не задан, возвращается ошибка FormatError.
-//
-// Аргументы:
-//   - typeIndicator: строковый индикатор типа источника.
-//   - attributes: атрибуты источника.
-//
-// Возвращает созданный источник (*Source) или ошибку.
 func (a *ArtifactDefinition) AppendSource(typeIndicator string, attributes map[string]interface{}) (*Source, error) {
 	if typeIndicator == "" {
 		return nil, FormatError{msg: "Missing type indicator."}

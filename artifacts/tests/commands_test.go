@@ -32,7 +32,7 @@ func TestCommandExecution(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// Инициализируем outputs
-	outputs, err := NewOutputs(dir, "0", false)
+	outputs, err := NewOutputs(dir, "0", false, false, "")
 	assert.NoError(t, err)
 	defer outputs.Close()
 
@@ -80,7 +80,7 @@ func TestUnknownCommand(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// Инициализируем outputs
-	outputs, err := NewOutputs(dir, "0", false)
+	outputs, err := NewOutputs(dir, "0", false, false, "")
 	assert.NoError(t, err)
 	defer outputs.Close()
 

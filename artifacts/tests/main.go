@@ -20,7 +20,9 @@ type Config struct {
 	Registry  bool
 	MaxSize   string
 	Output    string
+	ApiKey    string
 	SHA256    bool
+	Analysis  bool
 }
 
 func parseArgs() *Config {
@@ -44,7 +46,9 @@ func parseArgs() *Config {
 		Registry:  *flags.registry,
 		MaxSize:   *flags.maxsize,
 		Output:    *flags.output,
+		ApiKey:    *flags.apikey,
 		SHA256:    *flags.sha256,
+		Analysis:  *flags.analysis,
 	}
 }
 
@@ -71,8 +75,10 @@ type appFlags struct {
 	directory *string
 	registry  *bool
 	maxsize   *string
+	apikey    *string
 	output    *string
 	sha256    *bool
+	analysis  *bool
 }
 
 func initFlags(cfg *ini.File) *appFlags {
@@ -99,6 +105,10 @@ func initFlags(cfg *ini.File) *appFlags {
 		section.Key("maxsize").MustString(""),
 		"Не собирать файлы размером > n")
 
+	flags.apikey = flag.String("apikey",
+		section.Key("apikey").MustString("."),
+		"ApiKey платфомы opentip")
+
 	flags.output = flag.String("output",
 		section.Key("output").MustString("."),
 		"Директория для создания результатов")
@@ -106,6 +116,10 @@ func initFlags(cfg *ini.File) *appFlags {
 	flags.sha256 = flag.Bool("sha256",
 		section.Key("sha256").MustBool(false),
 		"Вычислять SHA-256 для собранных файлов")
+
+	flags.analysis = flag.Bool("analysis",
+		section.Key("analysis").MustBool(false),
+		"Флаг, управляющий первичным аналзим артефактов")
 
 	return flags
 }
@@ -256,7 +270,6 @@ func contains(slice []string, item string) bool {
 
 func main() {
 	config := parseArgs()
-	fmt.Printf("Config: %#v\n", config)
 
 	platform, err := getOperatingSystem()
 	if err != nil {
@@ -264,18 +277,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Log(LevelProgress, "Загрузка артефактов ...")
-
-	output, err := NewOutputs(config.Output, config.MaxSize, config.SHA256)
+	output, err := NewOutputs(config.Output, config.MaxSize, config.SHA256, config.Analysis, config.ApiKey)
 	if err != nil {
 		logger.Log(LevelCritical, fmt.Sprintf("Не удалось инициализировать вывод: %v", err))
 		os.Exit(1)
 	}
 
+	logger.Log(LevelInfo, fmt.Sprintf("Config: %#v\n", config))
+
 	// Создаём коллектор. В конструктор передаётся платформа.
 	collector := NewCollector(platform, nil)
 
 	// Загружаем определения артефактов
+	logger.Log(LevelProgress, "Загрузка артефактов ...")
 	registry := getArtifactsRegistry(config.Directory)
 
 	// Разворачиваем группы (если заданы)
@@ -283,7 +297,7 @@ func main() {
 	excludeArtifacts := resolveArtifactGroups(registry, config.Exclude)
 
 	// Флаг, управляющий сбором реестровых источников
-	if (platform == "Windows") && (config.Registry == true) {
+	if (platform == "Windows") && (config.Registry) {
 		logger.Log(LevelInfo, "Сбор реестровых источников активирован")
 	} else {
 		logger.Log(LevelInfo, "Сбор реестровых источников отключен: флаг Registry не задан")
@@ -295,5 +309,6 @@ func main() {
 	}
 
 	// Запускаем сбор артефактов и закрываем вывод.
+	logger.Log(LevelProgress, fmt.Sprintf("Collecting artifacts from %d sources ...", collector.sources))
 	collector.Collect(output)
 }

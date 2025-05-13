@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 
 	ntfsfs "github.com/forensicanalysis/fslib/ntfs"
 	"github.com/shirou/gopsutil/disk"
@@ -35,7 +34,6 @@ var (
 )
 
 // --- Интерфейс FileSystem и вспомогательные структуры --- //
-
 type FileSystem interface {
 	AddPattern(artifact, pattern, sourceType string)
 	Collect(output *Outputs)
@@ -115,7 +113,7 @@ func NewOSFileSystem(path string) *OSFileSystem {
 	if !strings.HasSuffix(cleaned, string(os.PathSeparator)) {
 		cleaned += string(os.PathSeparator)
 	}
-	logger.Log(LevelDebug, fmt.Sprintf("NewOSFileSystem.rootPath = %q", cleaned))
+	//logger.Log(LevelDebug, fmt.Sprintf("NewOSFileSystem.rootPath = %q", cleaned))
 	fs := &OSFileSystem{rootPath: cleaned}
 	fs.ArtifactFileSystem = NewArtifactFileSystem(fs)
 	return fs
@@ -124,16 +122,15 @@ func NewOSFileSystem(path string) *OSFileSystem {
 func (fs *OSFileSystem) relativePath(fpath string) string {
 	normalizedPath := filepath.ToSlash(fpath)
 	normalizedRoot := filepath.ToSlash(fs.rootPath)
-	logger.Log(LevelDebug, fmt.Sprintf(
-		"relativePath: normalize %q → %q, root %q", fpath, normalizedPath, normalizedRoot))
+	//logger.Log(LevelDebug, fmt.Sprintf("relativePath: normalize %q → %q, root %q", fpath, normalizedPath, normalizedRoot))
 	if strings.HasPrefix(normalizedPath, normalizedRoot) {
 		rel := normalizedPath[len(normalizedRoot):]
 		// Убираем оба вида слэшей, чтобы не осталось ни "/" ни "\"
 		rel = strings.TrimLeft(rel, "\\/")
-		logger.Log(LevelDebug, fmt.Sprintf("relativePath: trimmed → %q", rel))
+		//logger.Log(LevelDebug, fmt.Sprintf("relativePath: trimmed → %q", rel))
 		return rel
 	}
-	logger.Log(LevelDebug, fmt.Sprintf("relativePath: no trim, return %q", normalizedPath))
+	//logger.Log(LevelDebug, fmt.Sprintf("relativePath: no trim, return %q", normalizedPath))
 	return normalizedPath
 }
 
@@ -144,19 +141,16 @@ func (fs *OSFileSystem) parse(pattern string) []GeneratorFunc {
 			out := make(chan *PathObject, 1)
 			<-src
 			full := filepath.Join(fs.rootPath, filepath.FromSlash(pattern))
-			logger.Log(LevelInfo, fmt.Sprintf(
-				"parse: NTFS‑route fullPath = %q", full))
+			//logger.Log(LevelInfo, fmt.Sprintf("parse: NTFS‑route fullPath = %q", full))
 			ntfsFS, err := NewNTFSFileSystem(
 				fmt.Sprintf("\\\\.\\%s", filepath.VolumeName(fs.rootPath)))
 			if err != nil {
-				logger.Log(LevelError, fmt.Sprintf(
-					"parse: NewNTFSFileSystem error: %v", err))
+				//	logger.Log(LevelError, fmt.Sprintf("parse: NewNTFSFileSystem error: %v", err))
 				close(out)
 				return out
 			}
 			po := &PathObject{filesystem: ntfsFS, name: filepath.Base(full), path: full}
-			logger.Log(LevelInfo, fmt.Sprintf(
-				"parse: emitting PathObject {%q, %q}", po.name, po.path))
+			//logger.Log(LevelInfo, fmt.Sprintf("parse: emitting PathObject {%q, %q}", po.name, po.path))
 			out <- po
 			close(out)
 			return out
@@ -222,66 +216,49 @@ func (fs *OSFileSystem) IsSymlink(p *PathObject) bool {
 	return err == nil && (info.Mode()&os.ModeSymlink != 0)
 }
 
-// OSFileSystem.ListDirectory — теперь явно разрешает системные файлы и логгирует фильтрацию
-func (fs *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
-	var objects []*PathObject
+// OSFileSystem.ListDirectory
+func (fsys *OSFileSystem) ListDirectory(p *PathObject) []*PathObject {
+	// 1) Пробуем стандартный способ
 	entries, err := os.ReadDir(p.path)
-	if err != nil {
-		// Всегда логируем, какая именно ошибка вернулась
-		logger.Log(LevelWarning, fmt.Sprintf(
-			"ListDirectory: error reading %q: %v", p.path, err))
-		// Если это *os.PathError — покажем Op, Path и внутренний Err
-		if pe, ok := err.(*os.PathError); ok {
-			logger.Log(LevelWarning, fmt.Sprintf(
-				"  ↳ PathError.Op=%q, Path=%q, Err=%T(%v)",
-				pe.Op, pe.Path, pe.Err, pe.Err))
-			// Если Err — syscall.Errno, покажем его числовое значение
-			if serr, ok2 := pe.Err.(syscall.Errno); ok2 {
-				logger.Log(LevelWarning, fmt.Sprintf(
-					"  ↳ Syscall Errno number: %d", int(serr)))
+	if err == nil {
+		var objs []*PathObject
+		for _, e := range entries {
+			name := e.Name()
+			full := filepath.Join(p.path, name)
+			if strings.HasPrefix(name, "~$") {
+				logger.Log(LevelDebug, fmt.Sprintf("Skipping temp file: %s", full))
+				continue
 			}
+			objs = append(objs, &PathObject{filesystem: fsys, name: name, path: full})
 		}
+		return objs
+	}
 
-		// Затем делаем fallback на NTFSFileSystem для любого рода ошибок
-		vol := filepath.VolumeName(p.path)
-		if vol != "" {
-			device := fmt.Sprintf(`\\.\%s`, strings.TrimSuffix(vol, `\`))
-			logger.Log(LevelInfo, fmt.Sprintf(
-				"ListDirectory: fallback to NTFSFileSystem on device %q", device))
-			ntfsFS, nerr := NewNTFSFileSystem(device)
-			if nerr != nil {
-				logger.Log(LevelError, fmt.Sprintf(
-					"ListDirectory: NTFSFS creation failed: %v", nerr))
-				return nil
-			}
-			// создаём новый PathObject для NTFSFS с тем же p.path
-			tpo := &PathObject{filesystem: ntfsFS, name: p.name, path: p.path}
-			return ntfsFS.ListDirectory(tpo)
-		}
+	// 2) Логируем ошибку и падаем на NTFS-FS
+	// Лог ошибки os.ReadDir…
+	vol := filepath.VolumeName(p.path)
+	if vol == "" {
 		return nil
 	}
-	for _, entry := range entries {
-		name := entry.Name()
-		full := filepath.Join(p.path, name)
-
-		// Явно включаем NTFS‑потоки
-		switch name {
-		case "$MFT", "$MFTMirr", "$LogFile", "$Extend", "$UsnJrnl":
-			logger.Log(LevelDebug, fmt.Sprintf("Including NTFS system stream: %s", full))
-			objects = append(objects, &PathObject{filesystem: fs, name: name, path: full})
-			continue
-		}
-
-		// Пропускаем временные Office-файлы
-		if strings.HasPrefix(name, "~$") {
-			logger.Log(LevelDebug, fmt.Sprintf("Skipping temp file: %s", full))
-			continue
-		}
-
-		// Всё прочее
-		objects = append(objects, &PathObject{filesystem: fs, name: name, path: full})
+	device := `\\.\` + strings.TrimSuffix(vol, `\`)
+	ntfsFS, nerr := NewNTFSFileSystem(device)
+	if nerr != nil {
+		logger.Log(LevelError, fmt.Sprintf("NTFSFS init failed: %v", nerr))
+		return nil
 	}
-	return objects
+
+	rel := ntfsFS.relativePath(p.path)
+	ntfsEntries, rerr := fs.ReadDir(ntfsFS.fs, rel)
+	if rerr != nil {
+		logger.Log(LevelError, fmt.Sprintf("NTFSFS ReadDir error on %q: %v", rel, rerr))
+		return nil
+	}
+	var objs []*PathObject
+	for _, info := range ntfsEntries {
+		full := filepath.Join(p.path, info.Name())
+		objs = append(objs, &PathObject{filesystem: ntfsFS, name: info.Name(), path: full})
+	}
+	return objs
 }
 
 func (fs *OSFileSystem) GetPath(parent *PathObject, name string) *PathObject {
@@ -306,29 +283,25 @@ func (fs *OSFileSystem) GetFullPath(fullpath string) *PathObject {
 }
 
 func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
-	logger.Log(LevelInfo, fmt.Sprintf("OSFS.ReadChunks start for %q", p.path))
+	//logger.Log(LevelInfo, fmt.Sprintf("OSFS.ReadChunks start for %q", p.path))
 	// hive‑файлы реестра определяются по имени
 	if strings.HasPrefix(p.name, "$") || isRegistryFile(p.name) {
-		logger.Log(LevelInfo, fmt.Sprintf(
-			"OSFS.ReadChunks: protected → use NTFSFS for %q", p.path))
+		//	logger.Log(LevelInfo, fmt.Sprintf(	"OSFS.ReadChunks: protected → use NTFSFS for %q", p.path))
 		ntfsFS, err := NewNTFSFileSystem(
 			fmt.Sprintf(`\\.\%s`, filepath.VolumeName(fs.rootPath))) // UNC‑доступ к raw‑томe :contentReference[oaicite:6]{index=6}
 		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf(
-				"OSFS.ReadChunks: NewNTFSFileSystem error: %v", err))
+			//logger.Log(LevelError, fmt.Sprintf(	"OSFS.ReadChunks: NewNTFSFileSystem error: %v", err))
 			return nil, err
 		}
 		return ntfsFS.ReadChunks(p)
 	}
 	if !fs.IsFile(p) {
-		logger.Log(LevelDebug, fmt.Sprintf(
-			"OSFS.ReadChunks: skipping non-file %q", p.path))
+		//logger.Log(LevelDebug, fmt.Sprintf("OSFS.ReadChunks: skipping non-file %q", p.path))
 		return nil, nil
 	}
 	file, err := os.Open(p.path)
 	if err != nil {
-		logger.Log(LevelError, fmt.Sprintf(
-			"OSFS.ReadChunks: os.Open error: %v", err))
+		//logger.Log(LevelError, fmt.Sprintf(	"OSFS.ReadChunks: os.Open error: %v", err))
 		return nil, err
 	}
 	defer file.Close()
@@ -345,13 +318,11 @@ func (fs *OSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 			break
 		}
 		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf(
-				"OSFS.ReadChunks: read error: %v", err))
+			//logger.Log(LevelError, fmt.Sprintf(	"OSFS.ReadChunks: read error: %v", err))
 			return nil, err
 		}
 	}
-	logger.Log(LevelInfo, fmt.Sprintf(
-		"OSFS.ReadChunks: read %d chunks for %q", len(chunks), p.path))
+	//logger.Log(LevelInfo, fmt.Sprintf("OSFS.ReadChunks: read %d chunks for %q", len(chunks), p.path))
 	return chunks, nil
 }
 
@@ -483,8 +454,6 @@ func (fsm *FileSystemManager) Collect(output *Outputs) {
 }
 
 // getFilesystem определяет, какую файловую систему использовать для указанного пути.
-// FileSystemManager.getFilesystem — теперь логгирует выбор TSK для любых защищённых файлов
-// FileSystemManager.getFilesystem — теперь логируем факт выбора TSK для любых защищённых путей с "$"
 func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	// Normalize to forward slashes
 	p := filepath.ToSlash(path)
@@ -549,7 +518,6 @@ func (fsm *FileSystemManager) getFilesystem(path string) (FileSystem, error) {
 	// По умолчанию — OSFileSystem
 	if chosenFS == nil {
 		osfs := NewOSFileSystem(volume + string(filepath.Separator))
-		logger.Log(LevelInfo, fmt.Sprintf("Using OSFileSystem for %s", resolvedPath))
 		chosenFS = osfs
 	}
 
@@ -710,7 +678,7 @@ func (nts *NTFSFileSystem) relativePath(p string) string {
 	trimmed := strings.TrimLeft(noVol, `\/`)
 	// Конвертируем '\' → '/'
 	rel := filepath.ToSlash(trimmed) // :contentReference[oaicite:3]{index=3}
-	logger.Log(LevelDebug, fmt.Sprintf("NTFSFS.relativePath: %q → %q", p, rel))
+	//logger.Log(LevelDebug, fmt.Sprintf("NTFSFS.relativePath: %q → %q", p, rel))
 	return rel
 }
 
@@ -723,12 +691,11 @@ func (nts *NTFSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 	// Альтернатива: использовать ToFSPath напрямую:
 	// fsPath, err := fslib.ToFSPath(p.path)
 	// if err != nil { … }
-	logger.Log(LevelDebug, fmt.Sprintf("NTFSFS.ReadChunks: opening fsPath %q", fsPath))
+	//logger.Log(LevelDebug, fmt.Sprintf("NTFSFS.ReadChunks: opening fsPath %q", fsPath))
 	// 3) Открываем через ntfsfs
 	file, err := nts.fs.Open(fsPath) // корректно "Windows/System32/config/SAM" :contentReference[oaicite:5]{index=5}
 	if err != nil {
-		logger.Log(LevelError, fmt.Sprintf(
-			"NTFSFS.ReadChunks: ntfsfs.Open(%q) error: %v", fsPath, err))
+		//logger.Log(LevelError, fmt.Sprintf(	"NTFSFS.ReadChunks: ntfsfs.Open(%q) error: %v", fsPath, err))
 		return nil, err
 	}
 	defer file.Close()
@@ -746,13 +713,11 @@ func (nts *NTFSFileSystem) ReadChunks(p *PathObject) ([][]byte, error) {
 			break
 		}
 		if err != nil {
-			logger.Log(LevelError, fmt.Sprintf(
-				"NTFSFS.ReadChunks: read error: %v", err))
+			logger.Log(LevelError, fmt.Sprintf("NTFSFS.ReadChunks: read error: %v", err))
 			return nil, err
 		}
 	}
-	logger.Log(LevelInfo, fmt.Sprintf(
-		"NTFSFS.ReadChunks: read %d chunks for %q", len(chunks), p.path))
+	//logger.Log(LevelInfo, fmt.Sprintf("NTFSFS.ReadChunks: read %d chunks for %q", len(chunks), p.path))
 	return chunks, nil
 }
 

@@ -123,7 +123,7 @@ func (cc *FakeCommandCollector) Collect(output *Outputs) {
 func TestCollector(t *testing.T) {
 	// Создаём временную директорию.
 	tempDir := t.TempDir()
-	outputs, err := NewOutputs(tempDir, "50M", false)
+	outputs, err := NewOutputs(tempDir, "50M", false, false, "")
 	if err != nil {
 		t.Fatalf("Error creating Outputs: %v", err)
 	}
