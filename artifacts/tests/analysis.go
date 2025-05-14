@@ -165,13 +165,7 @@ func (q *AnalysisQueue) worker() {
 			}
 		}
 
-		// Extract MIME type
-		mime, ok := fileMap["mime_type"].(string)
-		if !ok {
-			continue
-		}
-
-		if md5 == "" || !(mime == "application/x-msdownload" || mime == "application/vnd.microsoft.portable-executable") {
+		if md5 == "" {
 			continue
 		}
 

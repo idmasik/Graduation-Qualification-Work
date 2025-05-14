@@ -166,8 +166,17 @@ func (o *Outputs) AddCollectedFileInfo(artifact string, pathObject FilePathObjec
 		if _, err := o.fileInfoFile.Write(append(b, '\n')); err != nil {
 			return err
 		}
+		// Фильтрация на анализ
 		if o.analysisQueue != nil {
-			o.analysisQueue.Enqueue(fileInfo)
+			// MIME-тип
+			mt, _ := fileInfo["file"].(map[string]interface{})["mime_type"].(string)
+			// Расширение файла
+			path := fileInfo["file"].(map[string]interface{})["path"].(string)
+			ext := strings.ToLower(filepath.Ext(path))
+			if mt == "application/x-msdownload" || mt == "application/vnd.microsoft.portable-executable" ||
+				ext == ".exe" || ext == ".dll" || ext == ".sys" || ext == ".bin" {
+				o.analysisQueue.Enqueue(fileInfo)
+			}
 		}
 	}
 	return nil
