@@ -28,7 +28,7 @@
    ```
 2. Сбилдить бинарь:
    ```bash
-   go build -o fast_dfar .
+   go build -o fast_dfar
    ```
 
 
