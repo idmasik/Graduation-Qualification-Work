@@ -117,11 +117,6 @@ func (r *ArtifactsReader) _readSources(artifactDefinitionValues map[string]inter
 			return FormatError{msg: fmt.Sprintf("Invalid artifact definition: %s, with error: %s", name, err.Error())}
 		}
 
-		// В оригинальном Python‑коде здесь выполнялась проверка supported_os для источника:
-		//   - читалось поле supported_os из source (если задано)
-		//   - проверялось, что все его значения содержатся в наборе поддерживаемых ОС,
-		//     а также что они являются подмножеством supported_os самого artifactDefinition.
-		// Здесь выполняем аналогичную проверку.
 		if rawSupported, exists := sourceMap["supported_os"]; exists {
 			rawList, ok := rawSupported.([]interface{})
 			if !ok {

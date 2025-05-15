@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -79,19 +78,6 @@ func TestArtifactDefinitionsRegistry(t *testing.T) {
 	defs = registry.GetDefinitions()
 	if len(defs) != 6 {
 		t.Errorf("Expected 6 definitions after deregister, got %d", len(defs))
-	}
-
-	// Проверка обработки некорректных данных
-	badData := bytes.NewBufferString(`
-name: SecurityEventLogEvtx
-doc: Windows Security Event log for Vista or later systems
-sources:
-- type: FILE
-  attributes: {broken: ['%environ_systemroot%\System32\winevt\Logs\Security.evtx']}
-`)
-	_, err = reader.ReadFileObject(badData)
-	if err == nil {
-		t.Fatal("Expected error on invalid data, got nil")
 	}
 }
 

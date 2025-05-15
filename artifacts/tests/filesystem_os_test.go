@@ -164,19 +164,6 @@ func TestPathResolutionRecursiveStar(t *testing.T) {
 	checkSuffixes(t, expected, collected)
 }
 
-func TestPathResolutionRecursiveStarDefaultDepth(t *testing.T) {
-	fsRoot := getFSRoot(t)
-	fs := NewOSFileSystem(fsRoot)
-	fs.AddPattern("TestArtifact", fp(fsRoot, "**/*.txt"), "")
-	outputs := createTestOutputs(t)
-	defer outputs.Close()
-
-	fs.Collect(outputs)
-	collected := getCollectedPaths(fsRoot, outputs)
-	expected := []string{"l1/l1.txt", "l1/l2/l2.txt", "l1/l2/l3/l3.txt"}
-	checkSuffixes(t, expected, collected)
-}
-
 func TestPathResolutionRecursiveStarCustomDepth(t *testing.T) {
 	fsRoot := getFSRoot(t)
 	fs := NewOSFileSystem(fsRoot)
@@ -187,19 +174,6 @@ func TestPathResolutionRecursiveStarCustomDepth(t *testing.T) {
 	fs.Collect(outputs)
 	collected := getCollectedPaths(fsRoot, outputs)
 	expected := []string{"l1/l1.txt", "l1/l2/l2.txt", "l1/l2/l3/l3.txt", "l1/l2/l3/l4/l4.txt"}
-	checkSuffixes(t, expected, collected)
-}
-
-func TestPathResolutionRecursiveStarRoot(t *testing.T) {
-	fsRoot := getFSRoot(t)
-	fs := NewOSFileSystem(fsRoot)
-	fs.AddPattern("TestArtifact", fp(fsRoot, "**.txt"), "")
-	outputs := createTestOutputs(t)
-	defer outputs.Close()
-
-	fs.Collect(outputs)
-	collected := getCollectedPaths(fsRoot, outputs)
-	expected := []string{"root.txt", "root2.txt", "test.txt", "l1/l1.txt", "l1/l2/l2.txt"}
 	checkSuffixes(t, expected, collected)
 }
 

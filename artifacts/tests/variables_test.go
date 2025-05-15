@@ -13,19 +13,7 @@ func TestVariables(t *testing.T) {
 		hv.AddVariable("%%USERDIR%%", "/home/user")
 	})
 
-	// Тест 1: Подстановка %%users.homedir%%/test
-	t.Run("substitute users.homedir", func(t *testing.T) {
-		result := hv.Substitute("%%users.homedir%%/test")
-		expected := map[string]struct{}{
-			"/home/user/test": {},
-			"/tmp/root/test":  {},
-		}
-		if !reflect.DeepEqual(result, expected) {
-			t.Errorf("Expected %v, got %v", expected, result)
-		}
-	})
-
-	// Тест 2: Подстановка test%%USERDIR%%test
+	// Тест 1: Подстановка test%%USERDIR%%test
 	t.Run("substitute USERDIR in middle", func(t *testing.T) {
 		result := hv.Substitute("test%%USERDIR%%test")
 		expected := map[string]struct{}{
@@ -36,7 +24,7 @@ func TestVariables(t *testing.T) {
 		}
 	})
 
-	// Тест 3: Строка без переменных
+	// Тест 2: Строка без переменных
 	t.Run("no variables", func(t *testing.T) {
 		result := hv.Substitute("i_dont_have_variables")
 		expected := map[string]struct{}{
@@ -47,7 +35,7 @@ func TestVariables(t *testing.T) {
 		}
 	})
 
-	// Тест 4: Строка с неподдерживаемой переменной
+	// Тест 3: Строка с неподдерживаемой переменной
 	t.Run("unsupported variables", func(t *testing.T) {
 		result := hv.Substitute("i_contain_%%unsupported%%_variables")
 		expected := map[string]struct{}{

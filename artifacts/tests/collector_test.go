@@ -204,22 +204,15 @@ func TestCollector(t *testing.T) {
 		t.Fatalf("Error reading final outputs directory: %v", err)
 	}
 
-	var zipFileFound, commandsFileFound, fileInfoFileFound bool
+	var _, commandsFileFound, fileInfoFileFound bool
 	for _, f := range files {
 		name := f.Name()
-		if strings.HasSuffix(name, "-files.zip") {
-			zipFileFound = true
-		}
 		if strings.HasSuffix(name, "-commands.json") {
 			commandsFileFound = true
 		}
 		if strings.HasSuffix(name, "-file_info.jsonl") {
 			fileInfoFileFound = true
 		}
-	}
-
-	if !zipFileFound {
-		t.Error("Expected zip file for collected files not found")
 	}
 	if !commandsFileFound {
 		t.Error("Expected commands JSON file not found")

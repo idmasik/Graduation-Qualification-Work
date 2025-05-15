@@ -259,23 +259,6 @@ func (p *PathSourceType) AsDict() map[string]interface{} {
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 
-// SourceTypeFactory is a factory for creating source types.
-// Фабрика использует зарегистрированные конструкторы для создания объектов на основе типа.
-
-//////////////////////////////////////// НЕ УВЕРЕН ЧТО ОТСУСТВИЕ ДАННОЙ ЧАСТИ В GO НЕ
-// _source_type_classes = {
-// 	definitions.TYPE_INDICATOR_ARTIFACT_GROUP: ArtifactGroupSourceType,
-// 	definitions.TYPE_INDICATOR_COMMAND: CommandSourceType,
-// 	definitions.TYPE_INDICATOR_DIRECTORY: DirectorySourceType,
-// 	definitions.TYPE_INDICATOR_FILE: FileSourceType,
-// 	definitions.TYPE_INDICATOR_PATH: PathSourceType,
-// 	definitions.TYPE_INDICATOR_WINDOWS_REGISTRY_KEY:
-// 		WindowsRegistryKeySourceType,
-// 	definitions.TYPE_INDICATOR_WINDOWS_REGISTRY_VALUE:
-// 		WindowsRegistryValueSourceType,
-// 	definitions.TYPE_INDICATOR_WMI_QUERY: WMIQuerySourceType,
-// }
-
 // Структура Хранит зарегистрированные типы источников в виде словаря.
 type SourceTypeFactory struct {
 	sourceTypeConstructors map[string]func(map[string]interface{}) (SourceType, error)
